@@ -8,6 +8,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 :root{
   --bg-deep:#0a0e14; --bg-elevated:#11161e; --bg-surface:#171c26; --bg-hover:#1c2330;
@@ -60,6 +62,11 @@ html,body{font-family:'Inter',sans-serif;background:var(--bg-deep);color:var(--t
 .nav-title-group{display:flex;flex-direction:column;flex:1;min-width:0;}
 .nav-title{font-size:13px;font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .nav-subtitle{font-size:9px;color:var(--text-tertiary);font-weight:600;letter-spacing:.03em;}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--text-tertiary);flex-shrink:0;transition:.2s;}
+.sync-dot.ok{background:var(--accent-green);box-shadow:0 0 6px rgba(74,222,128,.6);}
+.sync-dot.busy{background:var(--accent-primary);animation:pulseDot 1s infinite;}
+.sync-dot.err{background:var(--accent-red);}
+@keyframes pulseDot{0%,100%{opacity:1;}50%{opacity:.3;}}
 
 .screen-stack{flex:1;position:relative;overflow:hidden;}
 .screen{position:absolute;inset:0;display:none;flex-direction:column;overflow:hidden;}
@@ -89,6 +96,8 @@ html,body{font-family:'Inter',sans-serif;background:var(--bg-deep);color:var(--t
 .student-item .class-label{font-size:11px;color:var(--text-tertiary);}
 .student-item .status{font-size:10px;padding:4px 10px;border-radius:20px;background:rgba(248,113,113,.15);color:var(--accent-red);font-weight:600;flex-shrink:0;}
 .student-item .status.clean{background:rgba(74,222,128,.12);color:var(--accent-green);}
+.student-item .del-btn{width:26px;height:26px;border-radius:8px;border:1px solid var(--border-default);background:transparent;color:var(--text-tertiary);font-size:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.student-item .del-btn:active{transform:scale(.9);color:var(--accent-red);}
 
 .detail-panel{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-top:none;border-radius:0 0 12px 12px;padding:16px;margin-top:-2px;animation:slideDown .2s cubic-bezier(.4,0,.2,1);}
 @keyframes slideDown{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
@@ -122,10 +131,11 @@ html,body{font-family:'Inter',sans-serif;background:var(--bg-deep);color:var(--t
 .date-picker-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap;}
 .date-picker-row input[type="date"]{background:var(--bg-elevated);border:1px solid var(--border-default);color:var(--text-primary);border-radius:8px;padding:8px 10px;font-size:12px;font-family:'Inter';}
 
-.add-row{display:flex;gap:8px;margin-bottom:14px;}
-.add-row input{flex:1;background:var(--bg-elevated);border:1px solid var(--border-default);color:var(--text-primary);border-radius:8px;padding:9px 12px;font-size:13px;font-family:'Inter';}
+.add-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.add-row input{flex:1;min-width:120px;background:var(--bg-elevated);border:1px solid var(--border-default);color:var(--text-primary);border-radius:8px;padding:9px 12px;font-size:13px;font-family:'Inter';}
 .add-row input:focus{outline:none;border-color:var(--accent-primary);}
 .add-row button{background:var(--accent-primary);color:#0a0e14;border:none;border-radius:8px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;flex-shrink:0;}
+.add-row .btn-bulk{background:var(--bg-elevated);border:1px solid var(--border-default);color:var(--accent-primary);}
 
 table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;}
 thead th{text-align:left;color:var(--text-tertiary);font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:8px 8px;border-bottom:1px solid var(--border-subtle);white-space:nowrap;}
@@ -158,6 +168,11 @@ td input{width:100%;padding:5px 6px;font-size:12px;text-align:center;background:
 .avatar-preview img{width:100%;height:100%;object-fit:cover;}
 .btn-submit{width:100%;padding:11px;border-radius:8px;border:none;background:linear-gradient(135deg,var(--accent-primary),var(--accent-secondary));color:#0a0e14;font-weight:700;font-size:13px;cursor:pointer;font-family:'Inter';margin-top:4px;}
 .btn-submit:active{transform:scale(.97);}
+.bulk-textarea{width:100%;min-height:180px;padding:12px;border-radius:10px;border:1px solid var(--border-default);background:var(--bg-deep);color:var(--text-primary);font-size:13px;font-family:'Inter';resize:vertical;margin-bottom:8px;}
+.bulk-textarea:focus{outline:none;border-color:var(--accent-primary);}
+.bulk-hint{font-size:11px;color:var(--text-tertiary);margin-bottom:12px;line-height:1.5;}
+.bulk-result{font-size:12px;margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(74,222,128,.1);color:var(--accent-green);display:none;}
+.bulk-result.show{display:block;}
 hr{border:none;border-top:1px solid var(--border-subtle);margin:14px 0;}
 ::-webkit-scrollbar{width:4px;}
 ::-webkit-scrollbar-thumb{background:var(--border-default);border-radius:4px;}
@@ -194,6 +209,7 @@ hr{border:none;border-top:1px solid var(--border-subtle);margin:14px 0;}
       <div class="nav-title" id="navTitleText">Dwi Septiana</div>
       <div class="nav-subtitle" id="navSubtitle">Guru Matematika</div>
     </div>
+    <div class="sync-dot" id="syncDot" title="Status sinkronisasi Firebase"></div>
     <button class="btn-settings" onclick="openSettings()"><i class="fa-solid fa-gear"></i></button>
   </header>
   <div class="screen-stack">
@@ -204,7 +220,20 @@ hr{border:none;border-top:1px solid var(--border-subtle);margin:14px 0;}
 </div>
 
 <script>
-const STORAGE_KEY = 'dwi-septiana-app-v2';
+/* ---------- Firebase ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyBQwKb5BgWywX3bx3gKjNJsugJ1sUBr4X4",
+  authDomain: "absen-dzuhur.firebaseapp.com",
+  databaseURL: "https://absen-dzuhur-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "absen-dzuhur",
+  storageBucket: "absen-dzuhur.firebasestorage.app",
+  messagingSenderId: "254784143918",
+  appId: "1:254784143918:web:5d9769d58fced6a0b015bf"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const DATA_PATH = 'guruDwiSeptiana/state';
+
 const VIOLATION_TYPES = [
   { value:'Kehadiran (telat)', icon:'⏰' },
   { value:'Pakaian & atribut', icon:'👕' },
@@ -232,24 +261,94 @@ let attDate = todayStr();
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
+function setSync(status){ const d=document.getElementById('syncDot'); if(d) d.className='sync-dot '+status; }
 
-/* ---------- persistence ---------- */
-async function loadState(){
-  try{
-    const res = await window.storage.get(STORAGE_KEY);
-    if(res && res.value) state = Object.assign(state, JSON.parse(res.value));
-  }catch(e){}
-  applyAccent(state.accent);
-  renderCoverAvatar();
-  render();
+/* ---------- persistence (Firebase Realtime Database) ---------- */
+let lastSentJSON = null;
+let firstLoadDone = false;
+
+function loadState(){
+  setSync('busy');
+  db.ref(DATA_PATH).once('value').then(snap=>{
+    const data = snap.val();
+    if(data){ state = sanitizeIncoming(data); }
+    else { saveState(); } // initialize empty structure on first run
+    firstLoadDone = true;
+    applyAccent(state.accent);
+    renderCoverAvatar();
+    render();
+    setSync('ok');
+    listenRealtime();
+  }).catch(err=>{
+    console.error('Gagal memuat data Firebase', err);
+    setSync('err');
+    applyAccent(state.accent); renderCoverAvatar(); render();
+  });
 }
+
+function listenRealtime(){
+  db.ref(DATA_PATH).on('value', snap=>{
+    const data = snap.val();
+    if(!data) return;
+    const json = JSON.stringify(data);
+    if(json === lastSentJSON) return; // echo of our own write, already applied locally
+    state = sanitizeIncoming(data);
+    applyAccent(state.accent);
+    renderCoverAvatar();
+    render();
+    setSync('ok');
+  }, err=>{ console.error('Realtime sync error', err); setSync('err'); });
+}
+
+// Firebase turns arrays-with-holes / all-numeric-key objects into objects; normalize back.
+function sanitizeIncoming(data){
+  const out = Object.assign({ avatar:null, accent:'amber',
+    homeroom:{ className:'Kelas Perwalian', students:[], attendance:{}, violations:[] },
+    mathClasses:[] }, data);
+  out.homeroom = out.homeroom || { className:'Kelas Perwalian', students:[], attendance:{}, violations:[] };
+  out.homeroom.students = toArray(out.homeroom.students);
+  out.homeroom.violations = toArray(out.homeroom.violations);
+  out.homeroom.attendance = out.homeroom.attendance || {};
+  out.mathClasses = toArray(out.mathClasses).map(c=>({
+    id:c.id, className:c.className,
+    students: toArray(c.students),
+    attendance: c.attendance || {},
+    tugasColumns: toArray(c.tugasColumns).length ? toArray(c.tugasColumns) : ['Tugas 1'],
+    tugasValues: c.tugasValues || {},
+    ujianColumns: toArray(c.ujianColumns).length ? toArray(c.ujianColumns) : ['UH 1'],
+    ujianValues: c.ujianValues || {}
+  }));
+  return out;
+}
+function toArray(v){
+  if(Array.isArray(v)) return v.filter(x=>x!==null && x!==undefined);
+  if(v && typeof v === 'object') return Object.values(v).filter(x=>x!==null && x!==undefined);
+  return [];
+}
+// Firebase rejects `undefined` values — strip them recursively before writing.
+function stripUndefined(obj){
+  if(Array.isArray(obj)) return obj.map(stripUndefined);
+  if(obj && typeof obj === 'object'){
+    const out = {};
+    Object.keys(obj).forEach(k=>{ if(obj[k] !== undefined) out[k] = stripUndefined(obj[k]); });
+    return out;
+  }
+  return obj;
+}
+
 let saveTimer=null;
 function saveState(){
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(async ()=>{
-    try{ await window.storage.set(STORAGE_KEY, JSON.stringify(state)); }
-    catch(e){ console.error('Gagal menyimpan', e); }
-  }, 250);
+  setSync('busy');
+  saveTimer = setTimeout(()=>{
+    const clean = stripUndefined(state);
+    const json = JSON.stringify(clean);
+    lastSentJSON = json;
+    db.ref(DATA_PATH).set(clean).then(()=>setSync('ok')).catch(err=>{
+      console.error('Gagal menyimpan ke Firebase', err);
+      setSync('err');
+    });
+  }, 350);
 }
 
 function applyAccent(name){
@@ -313,7 +412,7 @@ function render(){
   } else if(path[0] === 'matematika'){
     titleEl.textContent = 'Guru Matematika';
     if(path.length === 1){
-      subEl.textContent = 'Kelas yang diajar';
+      subEl.textContent = `${state.mathClasses.length} kelas diajar`;
       html = renderClassList();
     } else {
       const cls = state.mathClasses.find(c=>c.id===path[1]);
@@ -379,8 +478,8 @@ function renderKehadiran(cls){
   }
   const dateRec = cls.attendance[attDate] || {};
   html += cls.students.map(s=>{
-    const opts = ATT_OPTS.map(v=>`<button class="att-chip ${dateRec[s.id]===v?'on':''}" data-v="${v}" data-student="${s.id}" data-cls="${cls.id||'home'}">${v}</button>`).join('');
-    return `<div class="att-row"><span class="name">${s.name}</span><div class="att-opts">${opts}</div></div>`;
+    const opts = ATT_OPTS.map(v=>`<button class="att-chip ${dateRec[s.id]===v?'on':''}" data-v="${v}" data-student="${s.id}">${v}</button>`).join('');
+    return `<div class="att-row"><span class="name">${s.name}${s.absen?` <span style="color:var(--text-tertiary);font-weight:400;">(No. ${s.absen})</span>`:''}</span><div class="att-opts">${opts}</div></div>`;
   }).join('');
 
   html += `<h3 style="font-size:13px;margin:18px 0 10px;color:var(--text-secondary);">Rekap Bulanan — ${monthLabel(attDate)}</h3>`;
@@ -410,7 +509,7 @@ function renderPelanggaran(cls){
     html += `<div>
       <div class="student-item ${isOpen?'open':''}" data-student="${s.id}">
         <div class="avatar">${s.name.charAt(0)}</div>
-        <div class="info"><div class="name">${s.name}</div><div class="class-label">${cls.className}</div></div>
+        <div class="info"><div class="name">${s.name}</div><div class="class-label">${cls.className}${s.absen?` · No. ${s.absen}`:''}</div></div>
         <div class="status ${count===0?'clean':''}">${count===0?'✅ 0':'⚠️ '+count}</div>
       </div>
       ${isOpen ? renderStudentPanel(cls, s) : ''}
@@ -456,9 +555,100 @@ function renderGrades(cls, colsKey, valsKey, prefix){
   return html;
 }
 
-/* ---------- shared: add student row ---------- */
+/* ---------- shared: add student row (single + bulk) ---------- */
 function renderAddStudentRow(cls){
-  return `<div class="add-row"><input type="text" id="newStudentInput" placeholder="Nama siswa baru"><button id="addStudentBtn">+ Tambah</button></div>`;
+  return `<div class="add-row">
+    <input type="text" id="newStudentInput" placeholder="Nama siswa baru">
+    <button id="addStudentBtn">+ Tambah</button>
+    <button class="btn-bulk" id="bulkAddStudentBtn" type="button"><i class="fa-solid fa-list"></i> Tambah Banyak</button>
+  </div>`;
+}
+
+/* ---------- bulk add modal helpers ---------- */
+function openModal(innerHtml){
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.onclick = e=>{ if(e.target===modal) modal.remove(); };
+  modal.innerHTML = `<div class="modal-box">${innerHtml}</div>`;
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function openBulkAddStudents(cls){
+  const modal = openModal(`
+    <div class="modal-header"><h3><i class="fa-solid fa-users" style="color:var(--accent-primary);"></i> Tambah Banyak Siswa</h3>
+      <button class="modal-close" id="mClose"><i class="fa-solid fa-times"></i></button></div>
+    <div class="bulk-hint">Tempel daftar nama, satu siswa per baris. Bisa juga tulis <b>Nama, No Absen</b> per baris kalau mau sekalian isi nomor absen. Nama yang sudah ada di kelas ini otomatis dilewati.</div>
+    <textarea class="bulk-textarea" id="bulkText" placeholder="Contoh:
+Ahmad Fauzi, 1
+Bunga Lestari, 2
+Citra Ayu
+Dedi Kurniawan, 4"></textarea>
+    <button class="btn-submit" id="bulkSubmit"><i class="fa-solid fa-check"></i> Tambahkan Semua</button>
+    <div class="bulk-result" id="bulkResult"></div>
+  `);
+  modal.querySelector('#mClose').onclick = ()=>modal.remove();
+  modal.querySelector('#bulkSubmit').onclick = ()=>{
+    const raw = modal.querySelector('#bulkText').value;
+    const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+    const existingNames = new Set(cls.students.map(s=>s.name.trim().toLowerCase()));
+    let added = 0, skipped = 0;
+    lines.forEach(line=>{
+      const parts = line.split(',').map(p=>p.trim());
+      const name = parts[0];
+      const absen = parts[1] || undefined;
+      if(!name) return;
+      const key = name.toLowerCase();
+      if(existingNames.has(key)){ skipped++; return; }
+      existingNames.add(key);
+      const student = { id: uid(), name };
+      if(absen) student.absen = absen;
+      cls.students.push(student);
+      added++;
+    });
+    if(added > 0){ saveState(); render(); }
+    const resultEl = modal.querySelector('#bulkResult');
+    resultEl.className = 'bulk-result show';
+    resultEl.textContent = `✅ ${added} siswa ditambahkan${skipped?`, ${skipped} dilewati karena nama sudah ada`:''}.`;
+    modal.querySelector('#bulkText').value = '';
+    if(added > 0) setTimeout(()=>modal.remove(), 1100);
+  };
+}
+
+function openBulkAddClasses(){
+  const modal = openModal(`
+    <div class="modal-header"><h3><i class="fa-solid fa-chalkboard" style="color:var(--accent-primary);"></i> Tambah Banyak Kelas</h3>
+      <button class="modal-close" id="mClose"><i class="fa-solid fa-times"></i></button></div>
+    <div class="bulk-hint">Tempel nama kelas, satu kelas per baris. Cocok buat sekaligus bikin 10 kelas.</div>
+    <textarea class="bulk-textarea" id="bulkText" placeholder="Contoh:
+10 A
+10 B
+10 C
+11 A
+11 B"></textarea>
+    <button class="btn-submit" id="bulkSubmit"><i class="fa-solid fa-check"></i> Tambahkan Semua</button>
+    <div class="bulk-result" id="bulkResult"></div>
+  `);
+  modal.querySelector('#mClose').onclick = ()=>modal.remove();
+  modal.querySelector('#bulkSubmit').onclick = ()=>{
+    const raw = modal.querySelector('#bulkText').value;
+    const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+    const existingNames = new Set(state.mathClasses.map(c=>c.className.trim().toLowerCase()));
+    let added = 0, skipped = 0;
+    lines.forEach(name=>{
+      const key = name.toLowerCase();
+      if(existingNames.has(key)){ skipped++; return; }
+      existingNames.add(key);
+      state.mathClasses.push({ id:uid(), className:name, students:[], attendance:{}, tugasColumns:['Tugas 1'], tugasValues:{}, ujianColumns:['UH 1'], ujianValues:{} });
+      added++;
+    });
+    if(added > 0){ saveState(); render(); }
+    const resultEl = modal.querySelector('#bulkResult');
+    resultEl.className = 'bulk-result show';
+    resultEl.textContent = `✅ ${added} kelas ditambahkan${skipped?`, ${skipped} dilewati karena nama sudah ada`:''}.`;
+    modal.querySelector('#bulkText').value = '';
+    if(added > 0) setTimeout(()=>modal.remove(), 1100);
+  };
 }
 
 /* ---------- event wiring (delegated per render) ---------- */
@@ -472,18 +662,21 @@ function attachHandlers(){
   if(addStudentBtn){
     const cls = currentClass();
     const input = body.querySelector('#newStudentInput');
-    const add = ()=>{ const name=input.value.trim(); if(!name) return; cls.students.push({id:uid(), name}); saveState(); render(); };
+    const add = ()=>{
+      const name=input.value.trim(); if(!name) return;
+      const exists = cls.students.some(s=>s.name.trim().toLowerCase()===name.toLowerCase());
+      if(exists){ alert('Nama siswa ini sudah ada di kelas.'); return; }
+      cls.students.push({id:uid(), name}); saveState(); render();
+    };
     addStudentBtn.onclick = add;
     input.onkeydown = e=>{ if(e.key==='Enter') add(); };
   }
 
+  const bulkAddStudentBtn = body.querySelector('#bulkAddStudentBtn');
+  if(bulkAddStudentBtn) bulkAddStudentBtn.onclick = ()=>openBulkAddStudents(currentClass());
+
   const addClassCard = body.querySelector('#addClassCard');
-  if(addClassCard) addClassCard.onclick = ()=>{
-    const name = prompt('Nama kelas baru, misal Kelas 10 A');
-    if(!name) return;
-    state.mathClasses.push({ id:uid(), className:name, students:[], attendance:{}, tugasColumns:['Tugas 1'], tugasValues:{}, ujianColumns:['UH 1'], ujianValues:{} });
-    saveState(); render();
-  };
+  if(addClassCard) addClassCard.onclick = openBulkAddClasses;
 
   body.querySelectorAll('.att-chip').forEach(btn=>{
     btn.onclick = ()=>{
@@ -551,7 +744,8 @@ function attachHandlers(){
       const col = inp.getAttribute('data-col');
       const valsKey = inp.getAttribute('data-valskey');
       if(!cls[valsKey][sid]) cls[valsKey][sid] = {};
-      cls[valsKey][sid][col] = inp.value === '' ? undefined : Number(inp.value);
+      if(inp.value === ''){ delete cls[valsKey][sid][col]; }
+      else { cls[valsKey][sid][col] = Number(inp.value); }
       saveState();
     };
   });
@@ -570,34 +764,34 @@ function fullDateTime(){
 
 /* ---------- settings modal ---------- */
 window.openSettings = function(){
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.onclick = e=>{ if(e.target===modal) modal.remove(); };
-  modal.innerHTML = `
-    <div class="modal-box">
-      <div class="modal-header"><h3><i class="fa-solid fa-gear" style="color:var(--accent-primary);"></i> Pengaturan</h3>
-        <button class="modal-close" id="closeSettingsBtn"><i class="fa-solid fa-times"></i></button></div>
-      <div class="settings-block">
-        <label>Foto Profil</label>
-        <div class="avatar-upload-row">
-          <div class="avatar-preview" id="avatarPreview">${state.avatar?`<img src="${state.avatar}">`:'DS'}</div>
-          <button class="btn-sm" id="uploadAvatarBtn">Ganti Foto</button>
-          <input type="file" id="avatarFileInput" accept="image/*" style="display:none;">
-        </div>
+  const modal = openModal(`
+    <div class="modal-header"><h3><i class="fa-solid fa-gear" style="color:var(--accent-primary);"></i> Pengaturan</h3>
+      <button class="modal-close" id="closeSettingsBtn"><i class="fa-solid fa-times"></i></button></div>
+    <div class="settings-block">
+      <label>Foto Profil</label>
+      <div class="avatar-upload-row">
+        <div class="avatar-preview" id="avatarPreview">${state.avatar?`<img src="${state.avatar}">`:'DS'}</div>
+        <button class="btn-sm" id="uploadAvatarBtn">Ganti Foto</button>
+        <input type="file" id="avatarFileInput" accept="image/*" style="display:none;">
       </div>
-      <div class="settings-block">
-        <label>Warna Aksen</label>
-        <div class="accent-grid">
-          ${Object.entries(ACCENTS).map(([name,c])=>`<button class="accent-btn ${state.accent===name?'active':''}" data-accent="${name}" style="background:linear-gradient(135deg,${c.p},${c.s});"></button>`).join('')}
-        </div>
+    </div>
+    <div class="settings-block">
+      <label>Warna Aksen</label>
+      <div class="accent-grid">
+        ${Object.entries(ACCENTS).map(([name,c])=>`<button class="accent-btn ${state.accent===name?'active':''}" data-accent="${name}" style="background:linear-gradient(135deg,${c.p},${c.s});"></button>`).join('')}
       </div>
-      <hr>
-      <div class="settings-block">
-        <label>Unduh Data</label>
-        <button class="btn-submit" id="exportBtn"><i class="fa-solid fa-file-excel"></i> Export ke Excel</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
+    </div>
+    <hr>
+    <div class="settings-block">
+      <label>Data Kelas Matematika</label>
+      <button class="btn-sm" id="bulkClassSettingsBtn" style="width:100%;"><i class="fa-solid fa-chalkboard"></i> Tambah Banyak Kelas</button>
+    </div>
+    <hr>
+    <div class="settings-block">
+      <label>Unduh Data</label>
+      <button class="btn-submit" id="exportBtn"><i class="fa-solid fa-file-excel"></i> Export ke Excel</button>
+    </div>
+  `);
   modal.querySelector('#closeSettingsBtn').onclick = ()=>modal.remove();
   modal.querySelector('#uploadAvatarBtn').onclick = ()=>modal.querySelector('#avatarFileInput').click();
   modal.querySelector('#avatarFileInput').onchange = (e)=>{
@@ -614,6 +808,7 @@ window.openSettings = function(){
       btn.classList.add('active');
     };
   });
+  modal.querySelector('#bulkClassSettingsBtn').onclick = ()=>{ modal.remove(); openBulkAddClasses(); };
   modal.querySelector('#exportBtn').onclick = exportExcel;
 };
 
@@ -624,11 +819,11 @@ function exportExcel(){
   // Kehadiran Perwalian
   const hr = state.homeroom;
   if(hr.students.length){
-    const rows = [['Siswa', ...ATT_OPTS]];
+    const rows = [['Siswa','No Absen', ...ATT_OPTS]];
     hr.students.forEach(s=>{
       const counts={}; ATT_OPTS.forEach(o=>counts[o]=0);
       Object.values(hr.attendance).forEach(rec=>{ if(rec[s.id]) counts[rec[s.id]]++; });
-      rows.push([s.name, ...ATT_OPTS.map(o=>counts[o])]);
+      rows.push([s.name, s.absen||'', ...ATT_OPTS.map(o=>counts[o])]);
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Kehadiran Perwalian');
   }
@@ -646,11 +841,11 @@ function exportExcel(){
   // Math classes
   state.mathClasses.forEach(c=>{
     if(!c.students.length) return;
-    const kehRows = [['Siswa', ...ATT_OPTS]];
+    const kehRows = [['Siswa','No Absen', ...ATT_OPTS]];
     c.students.forEach(s=>{
       const counts={}; ATT_OPTS.forEach(o=>counts[o]=0);
       Object.values(c.attendance).forEach(rec=>{ if(rec[s.id]) counts[rec[s.id]]++; });
-      kehRows.push([s.name, ...ATT_OPTS.map(o=>counts[o])]);
+      kehRows.push([s.name, s.absen||'', ...ATT_OPTS.map(o=>counts[o])]);
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kehRows), (c.className+' Keh').slice(0,31));
 
