@@ -293,7 +293,8 @@ const BIODATA_FIELDS = [
 
 let state = {
   avatar:null, accent:'amber',
-  homeroom:{ className:'Kelas Perwalian', students:[], attendance:{}, violations:[], biodata:{}, raportColumns:{}, raportValues:{} },
+  guruWali:{ className:'Wali Kelas', students:[], biodata:{}, raportColumns:{}, raportValues:{} },
+  homeroom:{ className:'Kelas Perwalian', students:[], attendance:{}, violations:[] },
   mathClasses:[]
 };
 let path = [];               // navigation stack, e.g. ['perwalian','kehadiran']
@@ -349,15 +350,18 @@ function listenRealtime(){
 // Firebase turns arrays-with-holes / all-numeric-key objects into objects; normalize back.
 function sanitizeIncoming(data){
   const out = Object.assign({ avatar:null, accent:'amber',
-    homeroom:{ className:'Kelas Perwalian', students:[], attendance:{}, violations:[], biodata:{}, raportColumns:{}, raportValues:{} },
+    guruWali:{ className:'Wali Kelas', students:[], biodata:{}, raportColumns:{}, raportValues:{} },
+    homeroom:{ className:'Kelas Perwalian', students:[], attendance:{}, violations:[] },
     mathClasses:[] }, data);
-  out.homeroom = out.homeroom || { className:'Kelas Perwalian', students:[], attendance:{}, violations:[], biodata:{}, raportColumns:{}, raportValues:{} };
+  out.guruWali = out.guruWali || { className:'Wali Kelas', students:[], biodata:{}, raportColumns:{}, raportValues:{} };
+  out.guruWali.students = toArray(out.guruWali.students);
+  out.guruWali.biodata = out.guruWali.biodata || {};
+  out.guruWali.raportColumns = out.guruWali.raportColumns || {};
+  out.guruWali.raportValues = out.guruWali.raportValues || {};
+  out.homeroom = out.homeroom || { className:'Kelas Perwalian', students:[], attendance:{}, violations:[] };
   out.homeroom.students = toArray(out.homeroom.students);
   out.homeroom.violations = toArray(out.homeroom.violations);
   out.homeroom.attendance = out.homeroom.attendance || {};
-  out.homeroom.biodata = out.homeroom.biodata || {};
-  out.homeroom.raportColumns = out.homeroom.raportColumns || {};
-  out.homeroom.raportValues = out.homeroom.raportValues || {};
   out.mathClasses = toArray(out.mathClasses).map(c=>({
     id:c.id, className:c.className,
     students: toArray(c.students),
@@ -445,7 +449,7 @@ function render(){
   let html = '';
 
   if(path[0] === 'guruwali'){
-    const cls = state.homeroom;
+    const cls = state.guruWali;
     titleEl.textContent = 'Guru Wali';
     if(path.length === 1){
       subEl.textContent = `${cls.className} — ${cls.students.length} siswa`;
@@ -516,7 +520,7 @@ function render(){
 function renderGuruWaliList(cls){
   let html = renderAddStudentRow(cls);
   if(cls.students.length === 0){
-    html += `<div class="empty-state"><i class="fa-solid fa-user-group"></i>Belum ada siswa. Tambahkan di sini, otomatis kepakai juga di tab Perwalian.</div>`;
+    html += `<div class="empty-state"><i class="fa-solid fa-user-group"></i>Belum ada siswa di daftar Guru Wali. Tambahkan lewat tombol di atas.</div>`;
     return html;
   }
   html += `<div class="student-list">`;
@@ -910,7 +914,7 @@ function attachHandlers(){
 
   const saveBiodataBtn = body.querySelector('#saveBiodataBtn');
   if(saveBiodataBtn) saveBiodataBtn.onclick = ()=>{
-    const cls = state.homeroom;
+    const cls = state.guruWali;
     const sid = saveBiodataBtn.getAttribute('data-student');
     const data = {};
     body.querySelectorAll('#biodataFormWrap [data-field]').forEach(f=>{ data[f.getAttribute('data-field')] = f.value.trim(); });
@@ -929,7 +933,7 @@ function attachHandlers(){
   if(addRaportColBtn) addRaportColBtn.onclick = ()=>{
     const name = prompt('Nama mata pelajaran, misal: Matematika');
     if(!name || !name.trim()) return;
-    const cls = state.homeroom;
+    const cls = state.guruWali;
     if(!cls.raportColumns[currentSemester]) cls.raportColumns[currentSemester] = [];
     if(cls.raportColumns[currentSemester].some(c=>c.toLowerCase()===name.trim().toLowerCase())){ alert('Mapel ini sudah ada di semester ini.'); return; }
     cls.raportColumns[currentSemester].push(name.trim());
@@ -938,7 +942,7 @@ function attachHandlers(){
 
   body.querySelectorAll('.raport-input').forEach(inp=>{
     inp.oninput = ()=>{
-      const cls = state.homeroom;
+      const cls = state.guruWali;
       const sid = path[1];
       const col = inp.getAttribute('data-col');
       if(!cls.raportValues[currentSemester]) cls.raportValues[currentSemester] = {};
@@ -951,6 +955,7 @@ function attachHandlers(){
 }
 
 function currentClass(){
+  if(path[0] === 'guruwali') return state.guruWali;
   if(path[0] === 'perwalian') return state.homeroom;
   if(path[0] === 'matematika' && path[1]) return state.mathClasses.find(c=>c.id===path[1]);
   return state.homeroom;
@@ -1071,8 +1076,8 @@ function initStandalone(id){
   document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-spinner fa-spin-pulse"></i>Memuat...</div>`;
 
   Promise.all([
-    db.ref(DATA_PATH + '/homeroom/students').once('value'),
-    db.ref(DATA_PATH + '/homeroom/biodata/' + id).once('value')
+    db.ref(DATA_PATH + '/guruWali/students').once('value'),
+    db.ref(DATA_PATH + '/guruWali/biodata/' + id).once('value')
   ]).then(([studSnap, bioSnap])=>{
     const students = toArray(studSnap.val());
     const student = students.find(s => s && s.id === id);
@@ -1104,7 +1109,7 @@ function renderStandaloneForm(student, values){
     inner.querySelectorAll('[data-field]').forEach(f=>{ data[f.getAttribute('data-field')] = f.value.trim(); });
     data.updatedAt = fullDateTime();
     // Narrow write: only this student's biodata node, so 36 siswa isi bareng gak akan saling timpa data satu sama lain.
-    db.ref(DATA_PATH + '/homeroom/biodata/' + student.id).set(data).then(()=>{
+    db.ref(DATA_PATH + '/guruWali/biodata/' + student.id).set(data).then(()=>{
       const r = inner.querySelector('#standaloneResult');
       r.className = 'bulk-result show';
       r.textContent = '✅ Tersimpan! Terima kasih, ' + student.name.split(' ')[0] + '.';
