@@ -274,8 +274,11 @@ const ACCENTS = {
   sky:    {p:'#38bdf8', s:'#4f8fff'},
   violet: {p:'#a78bfa', s:'#38bdf8'}
 };
+const KELAS_OPTIONS = [];
+['X','XI','XII'].forEach(g=>{ for(let i=1;i<=6;i++) KELAS_OPTIONS.push(`${g}-${i}`); });
 const BIODATA_FIELDS = [
   { key:'nis', label:'NIS', type:'text' },
+  { key:'kelasSekarang', label:'Kelas Sekarang', type:'select', options:KELAS_OPTIONS },
   { key:'ttl', label:'Tempat, Tanggal Lahir', type:'text', placeholder:'Jakarta, 12 Januari 2010' },
   { key:'jk', label:'Jenis Kelamin', type:'select', options:['Laki-laki','Perempuan'] },
   { key:'agama', label:'Agama', type:'text' },
@@ -527,9 +530,10 @@ function renderGuruWaliList(cls){
   cls.students.forEach(s=>{
     const bio = cls.biodata && cls.biodata[s.id];
     const filled = bio && Object.keys(bio).some(k=>k!=='updatedAt' && bio[k]);
+    const kelasBadge = bio && bio.kelasSekarang ? ` · ${bio.kelasSekarang}` : '';
     html += `<div class="student-item" data-nav-student="${s.id}">
       <div class="avatar">${s.name.charAt(0)}</div>
-      <div class="info"><div class="name">${s.name}</div><div class="class-label">${cls.className}${s.absen?` · No. ${s.absen}`:''}</div></div>
+      <div class="info"><div class="name">${s.name}</div><div class="class-label">${cls.className}${s.absen?` · No. ${s.absen}`:''}${kelasBadge}</div></div>
       <div class="status ${filled?'clean':''}">${filled?'✅ Sudah isi':'⚪ Belum isi'}</div>
     </div>`;
   });
