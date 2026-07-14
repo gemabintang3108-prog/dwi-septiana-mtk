@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Dwi Septiana — Guru Matematika</title>
 <meta name="theme-color" content="#0a0e14">
+<link rel="manifest" href="./manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -67,6 +71,7 @@ html,body{font-family:'Inter',sans-serif;background:var(--bg-deep);color:var(--t
 .sync-dot.ok{background:var(--accent-green);box-shadow:0 0 6px rgba(74,222,128,.6);}
 .sync-dot.busy{background:var(--accent-primary);animation:pulseDot 1s infinite;}
 .sync-dot.err{background:var(--accent-red);}
+.sync-dot.offline{background:var(--text-tertiary);border:2px solid var(--accent-primary);}
 @keyframes pulseDot{0%,100%{opacity:1;}50%{opacity:.3;}}
 
 .screen-stack{flex:1;position:relative;overflow:hidden;}
@@ -309,46 +314,89 @@ let currentSemester = 1;      // for Guru Wali > Nilai Raport
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
-function setSync(status){ const d=document.getElementById('syncDot'); if(d) d.className='sync-dot '+status; }
+function setSync(status){
+  const d=document.getElementById('syncDot'); if(!d) return;
+  d.className='sync-dot '+status;
+  const labels = { ok:'Tersinkron ke Firebase', busy:'Menyimpan...', err:'Gagal sinkron, dicoba lagi otomatis', offline:'Mode offline — perubahan disimpan di HP, akan disinkron otomatis kalau online lagi' };
+  d.title = labels[status] || '';
+}
 
-/* ---------- persistence (Firebase Realtime Database) ---------- */
+/* ---------- persistence: offline-first (localStorage) + background sync to Firebase ---------- */
+const LOCAL_CACHE_KEY = 'dwiSeptianaApp_cache_v1';
+const PENDING_KEY = 'dwiSeptianaApp_pendingSync_v1';
 let lastSentJSON = null;
 let firstLoadDone = false;
+let realtimeAttached = false;
+
+function readLocal(key){ try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; }catch(e){ return null; } }
+function writeLocal(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){ console.error('Gagal simpan lokal', e); } }
+function setPendingSync(val){ writeLocal(PENDING_KEY, !!val); }
+function hasPendingSync(){ return readLocal(PENDING_KEY) === true; }
 
 function loadState(){
-  setSync('busy');
-  db.ref(DATA_PATH).once('value').then(snap=>{
-    const data = snap.val();
-    if(data){ state = sanitizeIncoming(data); }
-    else { saveState(); } // initialize empty structure on first run
-    firstLoadDone = true;
+  // 1) Render instantly from local cache — works fully offline, no waiting on network.
+  const cached = readLocal(LOCAL_CACHE_KEY);
+  if(cached){
+    state = sanitizeIncoming(cached);
     applyAccent(state.accent);
     renderCoverAvatar();
     render();
-    setSync('ok');
+  }
+  setSync(navigator.onLine ? 'busy' : 'offline');
+
+  // 2) In the background, try to reach Firebase for the freshest data.
+  db.ref(DATA_PATH).once('value').then(snap=>{
+    const data = snap.val();
+    firstLoadDone = true;
+    if(hasPendingSync()){
+      // We have local changes made while offline — push those up instead of overwriting them.
+      pushToFirebase();
+    } else if(data){
+      state = sanitizeIncoming(data);
+      writeLocal(LOCAL_CACHE_KEY, state);
+      applyAccent(state.accent);
+      renderCoverAvatar();
+      render();
+      setSync('ok');
+    } else if(!cached){
+      saveState(); // first run ever, nothing on server or locally yet
+    } else {
+      setSync('ok');
+    }
     listenRealtime();
   }).catch(err=>{
-    console.error('Gagal memuat data Firebase', err);
-    setSync('err');
-    applyAccent(state.accent); renderCoverAvatar(); render();
+    console.error('Gagal memuat data Firebase (kemungkinan offline)', err);
+    setSync(navigator.onLine ? 'err' : 'offline');
+    if(!cached){ applyAccent(state.accent); renderCoverAvatar(); render(); }
+    listenRealtime(); // harmless to attach now; Firebase SDK will connect once network is back
   });
 }
 
-// standalone (student self-fill) mode uses this minimal loader instead of loadState()
-
 function listenRealtime(){
+  if(realtimeAttached) return;
+  realtimeAttached = true;
   db.ref(DATA_PATH).on('value', snap=>{
     const data = snap.val();
     if(!data) return;
     const json = JSON.stringify(data);
     if(json === lastSentJSON) return; // echo of our own write, already applied locally
+    if(hasPendingSync()) return; // don't let a stale remote snapshot clobber unsynced local changes
     state = sanitizeIncoming(data);
+    writeLocal(LOCAL_CACHE_KEY, state);
     applyAccent(state.accent);
     renderCoverAvatar();
     render();
     setSync('ok');
-  }, err=>{ console.error('Realtime sync error', err); setSync('err'); });
+  }, err=>{ console.error('Realtime sync error', err); setSync(navigator.onLine ? 'err' : 'offline'); });
 }
+
+window.addEventListener('online', ()=>{
+  setSync('busy');
+  listenRealtime();
+  if(hasPendingSync()) pushToFirebase();
+  flushPendingStandalone();
+});
+window.addEventListener('offline', ()=>{ setSync('offline'); });
 
 // Firebase turns arrays-with-holes / all-numeric-key objects into objects; normalize back.
 function sanitizeIncoming(data){
@@ -394,17 +442,23 @@ function stripUndefined(obj){
 
 let saveTimer=null;
 function saveState(){
+  writeLocal(LOCAL_CACHE_KEY, state); // instant local save — always works, even fully offline
   clearTimeout(saveTimer);
-  setSync('busy');
-  saveTimer = setTimeout(()=>{
-    const clean = stripUndefined(state);
-    const json = JSON.stringify(clean);
-    lastSentJSON = json;
-    db.ref(DATA_PATH).set(clean).then(()=>setSync('ok')).catch(err=>{
-      console.error('Gagal menyimpan ke Firebase', err);
-      setSync('err');
-    });
-  }, 350);
+  setSync(navigator.onLine ? 'busy' : 'offline');
+  saveTimer = setTimeout(pushToFirebase, 350);
+}
+function pushToFirebase(){
+  const clean = stripUndefined(state);
+  const json = JSON.stringify(clean);
+  lastSentJSON = json;
+  db.ref(DATA_PATH).set(clean).then(()=>{
+    setSync('ok');
+    setPendingSync(false);
+  }).catch(err=>{
+    console.error('Gagal menyimpan ke Firebase, tersimpan di HP & akan disinkron otomatis', err);
+    setSync(navigator.onLine ? 'err' : 'offline');
+    setPendingSync(true);
+  });
 }
 
 function applyAccent(name){
@@ -417,22 +471,32 @@ function renderCoverAvatar(){
   c.innerHTML = state.avatar ? `<img src="${state.avatar}">` : 'DS';
 }
 
-/* ---------- navigation ---------- */
+/* ---------- navigation (History API — makes phone/gesture back button navigate in-app) ---------- */
+function syncHistory(){
+  history.pushState({ path:[...path], panel:openStudentKey }, '', '');
+}
 window.openTop = function(section){
   path = [section];
   openStudentKey = null; selectedType = null;
   document.getElementById('coverLayer').classList.add('cover-hidden');
+  syncHistory();
   render();
 };
 window.handleBack = function(){
-  if(openStudentKey){ openStudentKey = null; selectedType = null; render(); return; }
-  if(path.length > 1){ path.pop(); render(); return; }
-  path = [];
-  document.getElementById('coverLayer').classList.remove('cover-hidden');
-  render();
+  history.back(); // popstate listener below does the actual navigation
 };
-function navigate(seg){ path.push(seg); openStudentKey=null; selectedType=null; render(); }
-function navigateTo(newPath){ path = newPath; openStudentKey=null; selectedType=null; render(); }
+function navigate(seg){ path.push(seg); openStudentKey=null; selectedType=null; syncHistory(); render(); }
+function navigateTo(newPath){ path = newPath; openStudentKey=null; selectedType=null; syncHistory(); render(); }
+
+window.addEventListener('popstate', (e)=>{
+  const st = e.state;
+  path = (st && st.path) ? st.path : [];
+  openStudentKey = st ? (st.panel || null) : null;
+  selectedType = null;
+  const cover = document.getElementById('coverLayer');
+  if(path.length === 0) cover.classList.remove('cover-hidden'); else cover.classList.add('cover-hidden');
+  render();
+});
 
 function updateBackButton(){
   const btn = document.getElementById('btnBack');
@@ -600,9 +664,21 @@ function renderPerwalianMenu(){
 }
 
 /* ---------- Class list (Matematika) ---------- */
+const GRADE_RANK = { 'X':10, 'XI':11, 'XII':12 };
+function classSortKey(name){
+  const m = (name||'').trim().match(/^(XII|XI|X)\s*[-.]?\s*(\d+)/i);
+  if(m){
+    const rank = GRADE_RANK[m[1].toUpperCase()] || 99;
+    return rank * 100 + parseInt(m[2], 10);
+  }
+  return 9999; // format gak dikenali -> taruh paling belakang
+}
+function sortedMathClasses(){
+  return [...state.mathClasses].sort((a,b)=> classSortKey(a.className) - classSortKey(b.className));
+}
 function renderClassList(){
   let html = `<div class="grid-2">`;
-  state.mathClasses.forEach(c=>{
+  sortedMathClasses().forEach(c=>{
     html += `<div class="card-item" onclick="navigate('${c.id}')"><i class="fa-solid fa-chalkboard-user"></i>${c.className}<div class="badge">${c.students.length} siswa</div></div>`;
   });
   html += `<div class="card-item add-card" id="addClassCard"><i class="fa-solid fa-plus"></i>Tambah Kelas</div>`;
@@ -847,6 +923,7 @@ function attachHandlers(){
       const sid = row.getAttribute('data-student');
       openStudentKey = (openStudentKey === sid) ? null : sid;
       selectedType = null;
+      syncHistory();
       render();
     };
   });
@@ -1071,6 +1148,27 @@ function exportExcel(){
 }
 
 /* ---------- Standalone student self-fill mode (?wali=STUDENT_ID) ---------- */
+const PENDING_STANDALONE_KEY = 'dwiSeptianaApp_pendingStandalone_v1';
+function standaloneCacheKey(id){ return 'dwiSeptianaApp_standalone_' + id; }
+
+function flushPendingStandalone(){
+  const pending = readLocal(PENDING_STANDALONE_KEY) || {};
+  const ids = Object.keys(pending);
+  if(ids.length === 0) return;
+  ids.forEach(id=>{
+    db.ref(DATA_PATH + '/guruWali/biodata/' + id).set(pending[id]).then(()=>{
+      const p = readLocal(PENDING_STANDALONE_KEY) || {};
+      delete p[id];
+      writeLocal(PENDING_STANDALONE_KEY, p);
+    }).catch(err=>console.error('Gagal sinkron biodata offline', err));
+  });
+}
+function queuePendingStandalone(id, data){
+  const p = readLocal(PENDING_STANDALONE_KEY) || {};
+  p[id] = data;
+  writeLocal(PENDING_STANDALONE_KEY, p);
+}
+
 function initStandalone(id){
   document.getElementById('splashScreen').style.display = 'none';
   document.getElementById('coverLayer').style.display = 'none';
@@ -1078,6 +1176,14 @@ function initStandalone(id){
   const wrap = document.getElementById('standaloneScreen');
   wrap.style.display = 'block';
   document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-spinner fa-spin-pulse"></i>Memuat...</div>`;
+
+  const cached = readLocal(standaloneCacheKey(id));
+
+  if(!navigator.onLine){
+    if(cached){ renderStandaloneForm(cached.student, cached.values, true); }
+    else { document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-wifi"></i>Belum pernah buka link ini pas online.<br>Sambungkan internet sekali dulu ya, habis itu bisa isi biodata offline kapan aja.</div>`; }
+    return;
+  }
 
   Promise.all([
     db.ref(DATA_PATH + '/guruWali/students').once('value'),
@@ -1087,22 +1193,25 @@ function initStandalone(id){
     const student = students.find(s => s && s.id === id);
     const values = bioSnap.val() || {};
     if(!student){
-      document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Link tidak valid atau siswa tidak ditemukan.<br>Hubungi wali kelas untuk link yang benar.</div>`;
+      if(cached){ renderStandaloneForm(cached.student, cached.values, true); }
+      else document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Link tidak valid atau siswa tidak ditemukan.<br>Hubungi wali kelas untuk link yang benar.</div>`;
       return;
     }
-    renderStandaloneForm(student, values);
+    writeLocal(standaloneCacheKey(id), { student, values });
+    renderStandaloneForm(student, values, false);
   }).catch(err=>{
     console.error('Gagal memuat data siswa', err);
-    document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Gagal memuat data. Coba lagi nanti.</div>`;
+    if(cached){ renderStandaloneForm(cached.student, cached.values, true); }
+    else document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Gagal memuat data. Coba lagi nanti.</div>`;
   });
 }
-function renderStandaloneForm(student, values){
+function renderStandaloneForm(student, values, isOffline){
   const inner = document.getElementById('standaloneInner');
   inner.innerHTML = `
     <div class="standalone-header">
       <div class="standalone-avatar">${student.name.charAt(0)}</div>
       <div class="standalone-name">${student.name}</div>
-      <div class="standalone-sub">Isi biodata dirimu dengan lengkap dan benar ya 🙂</div>
+      <div class="standalone-sub">${isOffline ? '📴 Mode offline — biodata akan disimpan di HP dan otomatis terkirim kalau internet nyala lagi.' : 'Isi biodata dirimu dengan lengkap dan benar ya 🙂'}</div>
     </div>
     ${renderBiodataFormHtml(values)}
     <button class="btn-submit" id="standaloneSaveBtn">💾 Simpan Biodata</button>
@@ -1112,24 +1221,39 @@ function renderStandaloneForm(student, values){
     const data = {};
     inner.querySelectorAll('[data-field]').forEach(f=>{ data[f.getAttribute('data-field')] = f.value.trim(); });
     data.updatedAt = fullDateTime();
-    // Narrow write: only this student's biodata node, so 36 siswa isi bareng gak akan saling timpa data satu sama lain.
-    db.ref(DATA_PATH + '/guruWali/biodata/' + student.id).set(data).then(()=>{
-      const r = inner.querySelector('#standaloneResult');
-      r.className = 'bulk-result show';
-      r.textContent = '✅ Tersimpan! Terima kasih, ' + student.name.split(' ')[0] + '.';
-    }).catch(err=>{
-      console.error('Gagal menyimpan biodata', err);
-      alert('Gagal menyimpan, coba lagi.');
-    });
+    writeLocal(standaloneCacheKey(student.id), { student, values: data }); // always cache locally first
+    const r = inner.querySelector('#standaloneResult');
+    r.className = 'bulk-result show';
+
+    if(navigator.onLine){
+      // Narrow write: only this student's biodata node, so banyak siswa isi bareng gak saling timpa.
+      db.ref(DATA_PATH + '/guruWali/biodata/' + student.id).set(data).then(()=>{
+        r.textContent = '✅ Tersimpan! Terima kasih, ' + student.name.split(' ')[0] + '.';
+      }).catch(err=>{
+        console.error('Gagal menyimpan biodata, disimpan di HP dulu', err);
+        queuePendingStandalone(student.id, data);
+        r.textContent = '📴 Internet lagi gangguan. Tersimpan di HP, nanti otomatis terkirim.';
+      });
+    } else {
+      queuePendingStandalone(student.id, data);
+      r.textContent = '📴 Tersimpan di HP (offline). Nanti otomatis terkirim kalau internet nyala.';
+    }
   };
 }
 
 /* ---------- init ---------- */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').catch(err=>console.error('Gagal daftar service worker (offline cache gak aktif)', err));
+  });
+}
+
 const urlParams = new URLSearchParams(location.search);
 const waliId = urlParams.get('wali');
 if(waliId){
   initStandalone(waliId);
 } else {
+  history.replaceState({ path:[], panel:null }, '', ''); // baseline so hardware back button navigates in-app first
   setTimeout(()=>{ const s=document.getElementById('splashScreen'); if(s) s.style.display='none'; }, 2300);
   loadState();
 }
