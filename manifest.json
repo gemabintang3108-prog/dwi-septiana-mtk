@@ -1,0 +1,9 @@
+{
+  "name": "Dwi Septiana",
+  "short_name": "Bu Dwi",
+  "start_url": "./dwi-septiana-app.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0e14",
+  "theme_color": "#0a0e14"
+}
