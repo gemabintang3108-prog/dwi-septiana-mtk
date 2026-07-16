@@ -586,6 +586,9 @@ function render(){
 /* ---------- Guru Wali ---------- */
 function renderGuruWaliList(cls){
   let html = renderAddStudentRow(cls);
+  if(cls.students.length){
+    html += `<div class="add-row"><button class="btn-bulk" id="copyAllLinksBtn" type="button" style="flex:1;"><i class="fa-solid fa-link"></i> Salin Semua Link Biodata</button></div>`;
+  }
   if(cls.students.length === 0){
     html += `<div class="empty-state"><i class="fa-solid fa-user-group"></i>Belum ada siswa di daftar Guru Wali. Tambahkan lewat tombol di atas.</div>`;
     return html;
@@ -625,7 +628,7 @@ function renderBiodataFormHtml(values){
 }
 function renderBiodataTab(cls, student){
   const values = cls.biodata[student.id] || {};
-  const link = `${location.origin}${location.pathname}?wali=${student.id}`;
+  const link = waliLinkFor(student);
   return `<div class="wali-share-box">
       <div class="detail-label">LINK ISI BIODATA UNTUK SISWA</div>
       <div class="wali-link-row"><input type="text" readonly id="waliLinkInput" value="${link}"><button class="btn-sm" id="copyWaliLink">Salin</button></div>
@@ -906,6 +909,9 @@ function attachHandlers(){
   const addClassCard = body.querySelector('#addClassCard');
   if(addClassCard) addClassCard.onclick = openBulkAddClasses;
 
+  const copyAllLinksBtn = body.querySelector('#copyAllLinksBtn');
+  if(copyAllLinksBtn) copyAllLinksBtn.onclick = ()=>copyAllWaliLinks(copyAllLinksBtn);
+
   body.querySelectorAll('.att-chip').forEach(btn=>{
     btn.onclick = ()=>{
       const cls = currentClass();
@@ -1047,6 +1053,42 @@ function fullDateTime(){
   return `${days[now.getDay()]}, ${now.getDate()} ${now.toLocaleDateString('id-ID',{month:'long'})} ${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
 }
 
+/* ---------- Guru Wali share link (name-based slug in URL, id-based storage) ---------- */
+function slugifyName(name){
+  return (name||'').toString().trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // strip accents
+    .replace(/[^a-z0-9\s-]/g,'')
+    .replace(/\s+/g,'-')
+    .replace(/-+/g,'-')
+    .replace(/^-|-$/g,'');
+}
+function waliLinkFor(student){
+  return `${location.origin}${location.pathname}?wali=${encodeURIComponent(slugifyName(student.name))}`;
+}
+function copyAllWaliLinks(btn){
+  const cls = state.guruWali;
+  if(!cls.students.length) return;
+  const nameCounts = {};
+  cls.students.forEach(s=>{ const sl=slugifyName(s.name); nameCounts[sl]=(nameCounts[sl]||0)+1; });
+  const dupes = Object.keys(nameCounts).filter(k=>nameCounts[k]>1);
+  const text = cls.students.map(s=>`${s.name}: ${waliLinkFor(s)}`).join('\n');
+  const done = ()=>{
+    btn.innerHTML = dupes.length ? '⚠️ Tersalin (ada nama sama!)' : '✅ Semua link tersalin!';
+    setTimeout(()=>{ btn.innerHTML = '<i class="fa-solid fa-link"></i> Salin Semua Link Biodata'; }, 2200);
+  };
+  if(navigator.clipboard){ navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done)); }
+  else fallbackCopy(text, done);
+  if(dupes.length){ alert('Perhatian: ada nama siswa yang sama persis, jadi link mereka bakal sama juga. Sebaiknya bedakan namanya (misal tambah inisial) biar link-nya unik per anak.'); }
+}
+function fallbackCopy(text, done){
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+  done();
+}
+
 /* ---------- settings modal ---------- */
 window.openSettings = function(){
   const modal = openModal(`
@@ -1147,7 +1189,7 @@ function exportExcel(){
   XLSX.writeFile(wb, 'Rekap_Dwi_Septiana.xlsx');
 }
 
-/* ---------- Standalone student self-fill mode (?wali=STUDENT_ID) ---------- */
+/* ---------- Standalone student self-fill mode (?wali=STUDENT_NAME_SLUG) ---------- */
 const PENDING_STANDALONE_KEY = 'dwiSeptianaApp_pendingStandalone_v1';
 function standaloneCacheKey(id){ return 'dwiSeptianaApp_standalone_' + id; }
 
@@ -1169,7 +1211,7 @@ function queuePendingStandalone(id, data){
   writeLocal(PENDING_STANDALONE_KEY, p);
 }
 
-function initStandalone(id){
+function initStandalone(idParam){
   document.getElementById('splashScreen').style.display = 'none';
   document.getElementById('coverLayer').style.display = 'none';
   document.querySelector('.app-shell').style.display = 'none';
@@ -1177,7 +1219,8 @@ function initStandalone(id){
   wrap.style.display = 'block';
   document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-spinner fa-spin-pulse"></i>Memuat...</div>`;
 
-  const cached = readLocal(standaloneCacheKey(id));
+  const cacheKey = standaloneCacheKey(idParam);
+  const cached = readLocal(cacheKey);
 
   if(!navigator.onLine){
     if(cached){ renderStandaloneForm(cached.student, cached.values, true); }
@@ -1185,20 +1228,21 @@ function initStandalone(id){
     return;
   }
 
-  Promise.all([
-    db.ref(DATA_PATH + '/guruWali/students').once('value'),
-    db.ref(DATA_PATH + '/guruWali/biodata/' + id).once('value')
-  ]).then(([studSnap, bioSnap])=>{
+  db.ref(DATA_PATH + '/guruWali/students').once('value').then(studSnap=>{
     const students = toArray(studSnap.val());
-    const student = students.find(s => s && s.id === id);
-    const values = bioSnap.val() || {};
+    const raw = decodeURIComponent(idParam || '');
+    const slug = slugifyName(raw);
+    const student = students.find(s => s && slugifyName(s.name) === slug) || students.find(s => s && s.id === raw);
     if(!student){
       if(cached){ renderStandaloneForm(cached.student, cached.values, true); }
       else document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Link tidak valid atau siswa tidak ditemukan.<br>Hubungi wali kelas untuk link yang benar.</div>`;
       return;
     }
-    writeLocal(standaloneCacheKey(id), { student, values });
-    renderStandaloneForm(student, values, false);
+    return db.ref(DATA_PATH + '/guruWali/biodata/' + student.id).once('value').then(bioSnap=>{
+      const values = bioSnap.val() || {};
+      writeLocal(cacheKey, { student, values });
+      renderStandaloneForm(student, values, false);
+    });
   }).catch(err=>{
     console.error('Gagal memuat data siswa', err);
     if(cached){ renderStandaloneForm(cached.student, cached.values, true); }
