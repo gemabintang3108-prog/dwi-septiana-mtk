@@ -409,10 +409,11 @@ function sanitizeIncoming(data){
   out.guruWali.biodata = out.guruWali.biodata || {};
   out.guruWali.raportColumns = out.guruWali.raportColumns || {};
   out.guruWali.raportValues = out.guruWali.raportValues || {};
-  out.homeroom = out.homeroom || { className:'Kelas Perwalian', students:[], attendance:{}, violations:[] };
+  out.homeroom = out.homeroom || { className:'Kelas Perwalian', students:[], attendance:{}, violations:[], biodata:{} };
   out.homeroom.students = toArray(out.homeroom.students);
   out.homeroom.violations = toArray(out.homeroom.violations);
   out.homeroom.attendance = out.homeroom.attendance || {};
+  out.homeroom.biodata = out.homeroom.biodata || {};
   out.mathClasses = toArray(out.mathClasses).map(c=>({
     id:c.id, className:c.className,
     students: toArray(c.students),
@@ -552,6 +553,18 @@ function render(){
       subEl.textContent = 'Rekap Pelanggaran';
       bc += ` <span>›</span> <span class="clickable" onclick="navigateTo(['perwalian'])">Perwalian</span> <span>›</span> <span>Pelanggaran</span>`;
       html = `<div class="breadcrumb">${bc}</div>` + renderPelanggaran(state.homeroom);
+    } else if(path[1] === 'biodata'){
+      if(path.length === 2){
+        subEl.textContent = 'Biodata Siswa';
+        bc += ` <span>›</span> <span class="clickable" onclick="navigateTo(['perwalian'])">Perwalian</span> <span>›</span> <span>Biodata</span>`;
+        html = `<div class="breadcrumb">${bc}</div>` + renderHomeroomBiodataList(state.homeroom);
+      } else {
+        const student = state.homeroom.students.find(s=>s.id===path[2]);
+        if(!student){ path=['perwalian','biodata']; render(); return; }
+        subEl.textContent = student.name;
+        bc += ` <span>›</span> <span class="clickable" onclick="navigateTo(['perwalian'])">Perwalian</span> <span>›</span> <span class="clickable" onclick="navigateTo(['perwalian','biodata'])">Biodata</span> <span>›</span> <span>${student.name}</span>`;
+        html = `<div class="breadcrumb">${bc}</div>` + renderHomeroomBiodataTab(state.homeroom, student);
+      }
     }
   } else if(path[0] === 'matematika'){
     titleEl.textContent = 'Guru Matematika';
@@ -660,10 +673,47 @@ function renderRaportTab(cls, student){
 
 /* ---------- Perwalian menu ---------- */
 function renderPerwalianMenu(){
-  return `<div class="grid-2">
-    <div class="card-item" onclick="navigate('kehadiran')"><i class="fa-solid fa-clipboard-check"></i>Kehadiran Siswa<div class="badge">Rekap bulanan</div></div>
-    <div class="card-item" onclick="navigate('pelanggaran')"><i class="fa-solid fa-triangle-exclamation"></i>Rekap Pelanggaran<div class="badge">Per anak</div></div>
+  return `<div class="grid-3">
+    <div class="card-item" onclick="navigate('kehadiran')"><i class="fa-solid fa-clipboard-check"></i>Kehadiran<div class="badge">Rekap bulanan</div></div>
+    <div class="card-item" onclick="navigate('pelanggaran')"><i class="fa-solid fa-triangle-exclamation"></i>Pelanggaran<div class="badge">Per anak</div></div>
+    <div class="card-item" onclick="navigate('biodata')"><i class="fa-solid fa-id-card"></i>Biodata<div class="badge">Isi mandiri</div></div>
   </div>`;
+}
+
+/* ---------- Perwalian: Biodata (mirrors Guru Wali, own student roster) ---------- */
+function renderHomeroomBiodataList(cls){
+  let html = renderAddStudentRow(cls);
+  if(cls.students.length){
+    html += `<div class="add-row"><button class="btn-bulk" id="copyAllHrLinksBtn" type="button" style="flex:1;"><i class="fa-solid fa-link"></i> Salin Semua Link Biodata</button></div>`;
+  }
+  if(cls.students.length === 0){
+    html += `<div class="empty-state"><i class="fa-solid fa-user-group"></i>Belum ada siswa di kelas ini.</div>`;
+    return html;
+  }
+  html += `<div class="student-list">`;
+  cls.students.forEach(s=>{
+    const bio = cls.biodata && cls.biodata[s.id];
+    const filled = bio && Object.keys(bio).some(k=>k!=='updatedAt' && bio[k]);
+    html += `<div class="student-item" data-nav-student="${s.id}">
+      <div class="avatar">${s.name.charAt(0)}</div>
+      <div class="info"><div class="name">${s.name}</div><div class="class-label">${cls.className}${s.absen?` · No. ${s.absen}`:''}</div></div>
+      <div class="status ${filled?'clean':''}">${filled?'✅ Sudah isi':'⚪ Belum isi'}</div>
+    </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+function renderHomeroomBiodataTab(cls, student){
+  const values = (cls.biodata && cls.biodata[student.id]) || {};
+  const link = hrLinkFor(student);
+  return `<div class="wali-share-box">
+      <div class="detail-label">LINK ISI BIODATA UNTUK SISWA</div>
+      <div class="wali-link-row"><input type="text" readonly id="hrLinkInput" value="${link}"><button class="btn-sm" id="copyHrLink">Salin</button></div>
+      <div class="bulk-hint">Kirim link ini ke ${student.name} (WA/Classroom). Dia bisa isi biodatanya sendiri, tanpa lihat data siswa lain.</div>
+    </div>
+    <div id="hrBiodataFormWrap">${renderBiodataFormHtml(values)}</div>
+    <button class="btn-inline" id="saveHrBiodataBtn" data-student="${student.id}">💾 Simpan Biodata</button>
+    ${values.updatedAt ? `<div class="bulk-hint">Terakhir diperbarui: ${values.updatedAt}</div>` : ''}`;
 }
 
 /* ---------- Class list (Matematika) ---------- */
@@ -910,7 +960,33 @@ function attachHandlers(){
   if(addClassCard) addClassCard.onclick = openBulkAddClasses;
 
   const copyAllLinksBtn = body.querySelector('#copyAllLinksBtn');
-  if(copyAllLinksBtn) copyAllLinksBtn.onclick = ()=>copyAllWaliLinks(copyAllLinksBtn);
+  if(copyAllLinksBtn) copyAllLinksBtn.onclick = ()=>copyAllLinks(state.guruWali, waliLinkFor, copyAllLinksBtn);
+
+  const copyAllHrLinksBtn = body.querySelector('#copyAllHrLinksBtn');
+  if(copyAllHrLinksBtn) copyAllHrLinksBtn.onclick = ()=>copyAllLinks(state.homeroom, hrLinkFor, copyAllHrLinksBtn);
+
+  const copyHrLink = body.querySelector('#copyHrLink');
+  if(copyHrLink) copyHrLink.onclick = ()=>{
+    const input = body.querySelector('#hrLinkInput');
+    input.select(); input.setSelectionRange(0,99999);
+    const done = ()=>{ copyHrLink.textContent='Tersalin!'; setTimeout(()=>copyHrLink.textContent='Salin',1500); };
+    if(navigator.clipboard){ navigator.clipboard.writeText(input.value).then(done).catch(()=>{ document.execCommand('copy'); done(); }); }
+    else { document.execCommand('copy'); done(); }
+  };
+
+  const saveHrBiodataBtn = body.querySelector('#saveHrBiodataBtn');
+  if(saveHrBiodataBtn) saveHrBiodataBtn.onclick = ()=>{
+    const cls = state.homeroom;
+    const sid = saveHrBiodataBtn.getAttribute('data-student');
+    const data = {};
+    body.querySelectorAll('#hrBiodataFormWrap [data-field]').forEach(f=>{ data[f.getAttribute('data-field')] = f.value.trim(); });
+    data.updatedAt = fullDateTime();
+    if(!cls.biodata) cls.biodata = {};
+    cls.biodata[sid] = data;
+    saveState();
+    saveHrBiodataBtn.innerHTML = '✅ Tersimpan';
+    setTimeout(()=>{ saveHrBiodataBtn.innerHTML = '💾 Simpan Biodata'; }, 1500);
+  };
 
   body.querySelectorAll('.att-chip').forEach(btn=>{
     btn.onclick = ()=>{
@@ -1065,16 +1141,19 @@ function slugifyName(name){
 function waliLinkFor(student){
   return `${location.origin}${location.pathname}?wali=${encodeURIComponent(slugifyName(student.name))}`;
 }
-function copyAllWaliLinks(btn){
-  const cls = state.guruWali;
+function hrLinkFor(student){
+  return `${location.origin}${location.pathname}?hr=${encodeURIComponent(slugifyName(student.name))}`;
+}
+function copyAllLinks(cls, linkFn, btn){
   if(!cls.students.length) return;
   const nameCounts = {};
   cls.students.forEach(s=>{ const sl=slugifyName(s.name); nameCounts[sl]=(nameCounts[sl]||0)+1; });
   const dupes = Object.keys(nameCounts).filter(k=>nameCounts[k]>1);
-  const text = cls.students.map(s=>`${s.name}: ${waliLinkFor(s)}`).join('\n');
+  const text = cls.students.map(s=>`${s.name}: ${linkFn(s)}`).join('\n');
+  const originalLabel = btn.innerHTML;
   const done = ()=>{
     btn.innerHTML = dupes.length ? '⚠️ Tersalin (ada nama sama!)' : '✅ Semua link tersalin!';
-    setTimeout(()=>{ btn.innerHTML = '<i class="fa-solid fa-link"></i> Salin Semua Link Biodata'; }, 2200);
+    setTimeout(()=>{ btn.innerHTML = originalLabel; }, 2200);
   };
   if(navigator.clipboard){ navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done)); }
   else fallbackCopy(text, done);
@@ -1189,42 +1268,79 @@ function exportExcel(){
   XLSX.writeFile(wb, 'Rekap_Dwi_Septiana.xlsx');
 }
 
-/* ---------- Standalone student self-fill mode (?wali=STUDENT_NAME_SLUG) ---------- */
+/* ---------- Standalone student self-fill mode ----------
+   ?wali=NAME_SLUG -> Guru Wali roster: Biodata + Nilai Raport (Smt 1-5)
+   ?hr=NAME_SLUG   -> Perwalian roster: Biodata only
+*/
 const PENDING_STANDALONE_KEY = 'dwiSeptianaApp_pendingStandalone_v1';
-function standaloneCacheKey(id){ return 'dwiSeptianaApp_standalone_' + id; }
+function standaloneCacheKey(source, id){ return 'dwiSeptianaApp_standalone_' + source + '_' + id; }
 
-function flushPendingStandalone(){
-  const pending = readLocal(PENDING_STANDALONE_KEY) || {};
-  const ids = Object.keys(pending);
-  if(ids.length === 0) return;
-  ids.forEach(id=>{
-    db.ref(DATA_PATH + '/guruWali/biodata/' + id).set(pending[id]).then(()=>{
-      const p = readLocal(PENDING_STANDALONE_KEY) || {};
-      delete p[id];
-      writeLocal(PENDING_STANDALONE_KEY, p);
-    }).catch(err=>console.error('Gagal sinkron biodata offline', err));
-  });
-}
-function queuePendingStandalone(id, data){
+// Generic offline write queue: keyed by the exact Firebase path being written to.
+function queuePendingWrite(path, data){
   const p = readLocal(PENDING_STANDALONE_KEY) || {};
-  p[id] = data;
+  p[path] = data;
   writeLocal(PENDING_STANDALONE_KEY, p);
 }
+function flushPendingStandalone(){
+  const pending = readLocal(PENDING_STANDALONE_KEY) || {};
+  const paths = Object.keys(pending);
+  if(paths.length === 0) return;
+  paths.forEach(path=>{
+    db.ref(path).set(pending[path]).then(()=>{
+      const p = readLocal(PENDING_STANDALONE_KEY) || {};
+      delete p[path];
+      writeLocal(PENDING_STANDALONE_KEY, p);
+    }).catch(err=>console.error('Gagal sinkron data offline', err));
+  });
+}
+function saveStandaloneWrite(path, data, resultEl, successMsg){
+  resultEl.className = 'bulk-result show';
+  if(navigator.onLine){
+    db.ref(path).set(data).then(()=>{
+      resultEl.textContent = successMsg;
+    }).catch(err=>{
+      console.error('Gagal menyimpan, disimpan di HP dulu', err);
+      queuePendingWrite(path, data);
+      resultEl.textContent = '📴 Internet lagi gangguan. Tersimpan di HP, nanti otomatis terkirim.';
+    });
+  } else {
+    queuePendingWrite(path, data);
+    resultEl.textContent = '📴 Tersimpan di HP (offline). Nanti otomatis terkirim kalau internet nyala.';
+  }
+}
+function sanitizeRaportColumns(raw){
+  raw = raw || {};
+  const out = {};
+  for(let s=1;s<=5;s++){ out[s] = toArray(raw[s]); }
+  return out;
+}
+function renderRaportFormHtml(columns, values){
+  if(!columns || !columns.length){
+    return `<div class="empty-state" style="padding:24px 10px;"><i class="fa-solid fa-graduation-cap"></i>Guru belum menambahkan mata pelajaran untuk semester ini.</div>`;
+  }
+  return columns.map(col=>{
+    const v = (values && values[col] !== undefined) ? values[col] : '';
+    return `<div class="form-group"><label class="form-label">${col}</label><input type="number" class="form-input" data-raport-col="${col}" value="${v}"></div>`;
+  }).join('');
+}
 
-function initStandalone(idParam){
+/* ---- ?wali= : Guru Wali roster, Biodata + Nilai Raport ---- */
+let standaloneTab = 'biodata';
+let standaloneSem = 1;
+
+function initStandaloneWali(idParam){
   document.getElementById('splashScreen').style.display = 'none';
   document.getElementById('coverLayer').style.display = 'none';
   document.querySelector('.app-shell').style.display = 'none';
-  const wrap = document.getElementById('standaloneScreen');
-  wrap.style.display = 'block';
+  document.getElementById('standaloneScreen').style.display = 'block';
   document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-spinner fa-spin-pulse"></i>Memuat...</div>`;
 
-  const cacheKey = standaloneCacheKey(idParam);
+  const cacheKey = standaloneCacheKey('wali', idParam);
   const cached = readLocal(cacheKey);
 
   if(!navigator.onLine){
-    if(cached){ renderStandaloneForm(cached.student, cached.values, true); }
-    else { document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-wifi"></i>Belum pernah buka link ini pas online.<br>Sambungkan internet sekali dulu ya, habis itu bisa isi biodata offline kapan aja.</div>`; }
+    if(cached){ renderStandaloneWaliForm(cacheKey, {...cached, isOffline:true}); }
+    else { document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-wifi"></i>Belum pernah buka link ini pas online.<br>Sambungkan internet sekali dulu ya, habis itu bisa isi biodata & nilai raport offline kapan aja.</div>`; }
     return;
   }
 
@@ -1234,22 +1350,125 @@ function initStandalone(idParam){
     const slug = slugifyName(raw);
     const student = students.find(s => s && slugifyName(s.name) === slug) || students.find(s => s && s.id === raw);
     if(!student){
-      if(cached){ renderStandaloneForm(cached.student, cached.values, true); }
-      else document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Link tidak valid atau siswa tidak ditemukan.<br>Hubungi wali kelas untuk link yang benar.</div>`;
+      if(cached){ renderStandaloneWaliForm(cacheKey, {...cached, isOffline:true}); }
+      else document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Link tidak valid atau siswa tidak ditemukan.<br>Hubungi guru untuk link yang benar.</div>`;
       return;
     }
-    return db.ref(DATA_PATH + '/guruWali/biodata/' + student.id).once('value').then(bioSnap=>{
-      const values = bioSnap.val() || {};
-      writeLocal(cacheKey, { student, values });
-      renderStandaloneForm(student, values, false);
+    return Promise.all([
+      db.ref(DATA_PATH + '/guruWali/biodata/' + student.id).once('value'),
+      db.ref(DATA_PATH + '/guruWali/raportColumns').once('value'),
+      db.ref(DATA_PATH + '/guruWali/raportValues').once('value')
+    ]).then(([bioSnap, colSnap, valSnap])=>{
+      const ctx = {
+        student,
+        values: bioSnap.val() || {},
+        raportColumns: sanitizeRaportColumns(colSnap.val()),
+        raportValues: valSnap.val() || {},
+        isOffline: false
+      };
+      writeLocal(cacheKey, ctx);
+      renderStandaloneWaliForm(cacheKey, ctx);
     });
   }).catch(err=>{
     console.error('Gagal memuat data siswa', err);
-    if(cached){ renderStandaloneForm(cached.student, cached.values, true); }
+    if(cached){ renderStandaloneWaliForm(cacheKey, {...cached, isOffline:true}); }
     else document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Gagal memuat data. Coba lagi nanti.</div>`;
   });
 }
-function renderStandaloneForm(student, values, isOffline){
+function renderStandaloneWaliForm(cacheKey, ctx){
+  const { student, values, raportColumns, raportValues, isOffline } = ctx;
+  const inner = document.getElementById('standaloneInner');
+  inner.innerHTML = `
+    <div class="standalone-header">
+      <div class="standalone-avatar">${student.name.charAt(0)}</div>
+      <div class="standalone-name">${student.name}</div>
+      <div class="standalone-sub">${isOffline ? '📴 Mode offline — data akan disimpan di HP dan otomatis terkirim kalau internet nyala lagi.' : 'Isi biodata & nilai raport dirimu dengan lengkap dan benar ya 🙂'}</div>
+    </div>
+    <div class="sem-tab-row">
+      <button class="sem-tab ${standaloneTab==='biodata'?'active':''}" id="stdTabBiodata" style="flex:1;">Biodata</button>
+      <button class="sem-tab ${standaloneTab==='raport'?'active':''}" id="stdTabRaport" style="flex:1;">Nilai Raport</button>
+    </div>
+    <div id="standaloneTabBody"></div>
+  `;
+  inner.querySelector('#stdTabBiodata').onclick = ()=>{ standaloneTab='biodata'; renderStandaloneWaliForm(cacheKey, ctx); };
+  inner.querySelector('#stdTabRaport').onclick = ()=>{ standaloneTab='raport'; renderStandaloneWaliForm(cacheKey, ctx); };
+
+  const tabBody = inner.querySelector('#standaloneTabBody');
+  if(standaloneTab === 'biodata'){
+    tabBody.innerHTML = `${renderBiodataFormHtml(values)}<button class="btn-submit" id="standaloneSaveBtn">💾 Simpan Biodata</button><div class="bulk-result" id="standaloneResult"></div>`;
+    tabBody.querySelector('#standaloneSaveBtn').onclick = ()=>{
+      const data = {};
+      tabBody.querySelectorAll('[data-field]').forEach(f=>{ data[f.getAttribute('data-field')] = f.value.trim(); });
+      data.updatedAt = fullDateTime();
+      ctx.values = data;
+      writeLocal(cacheKey, ctx);
+      const r = tabBody.querySelector('#standaloneResult');
+      saveStandaloneWrite(DATA_PATH + '/guruWali/biodata/' + student.id, data, r, '✅ Biodata tersimpan! Terima kasih, ' + student.name.split(' ')[0] + '.');
+    };
+  } else {
+    const cols = raportColumns[standaloneSem] || [];
+    const semVals = (raportValues[standaloneSem] && raportValues[standaloneSem][student.id]) || {};
+    const semTabs = [1,2,3,4,5].map(s=>`<button class="sem-tab ${standaloneSem===s?'active':''}" data-sem="${s}" style="font-size:11px;padding:6px 10px;">Smt ${s}</button>`).join('');
+    tabBody.innerHTML = `<div class="sem-tab-row">${semTabs}</div>${renderRaportFormHtml(cols, semVals)}
+      ${cols.length ? `<button class="btn-submit" id="standaloneSaveRaportBtn">💾 Simpan Nilai Raport Smt ${standaloneSem}</button>` : ''}
+      <div class="bulk-result" id="standaloneResult"></div>`;
+    tabBody.querySelectorAll('.sem-tab[data-sem]').forEach(btn=>{
+      btn.onclick = ()=>{ standaloneSem = Number(btn.getAttribute('data-sem')); renderStandaloneWaliForm(cacheKey, ctx); };
+    });
+    const saveRaportBtn = tabBody.querySelector('#standaloneSaveRaportBtn');
+    if(saveRaportBtn) saveRaportBtn.onclick = ()=>{
+      const data = {};
+      tabBody.querySelectorAll('[data-raport-col]').forEach(f=>{
+        if(f.value !== '') data[f.getAttribute('data-raport-col')] = Number(f.value);
+      });
+      if(!ctx.raportValues[standaloneSem]) ctx.raportValues[standaloneSem] = {};
+      ctx.raportValues[standaloneSem][student.id] = data;
+      writeLocal(cacheKey, ctx);
+      const r = tabBody.querySelector('#standaloneResult');
+      saveStandaloneWrite(DATA_PATH + '/guruWali/raportValues/' + standaloneSem + '/' + student.id, data, r, '✅ Nilai raport Semester ' + standaloneSem + ' tersimpan!');
+    };
+  }
+}
+
+/* ---- ?hr= : Perwalian (homeroom) roster, Biodata only ---- */
+function initStandaloneHomeroom(idParam){
+  document.getElementById('splashScreen').style.display = 'none';
+  document.getElementById('coverLayer').style.display = 'none';
+  document.querySelector('.app-shell').style.display = 'none';
+  document.getElementById('standaloneScreen').style.display = 'block';
+  document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-spinner fa-spin-pulse"></i>Memuat...</div>`;
+
+  const cacheKey = standaloneCacheKey('hr', idParam);
+  const cached = readLocal(cacheKey);
+
+  if(!navigator.onLine){
+    if(cached){ renderStandaloneHomeroomForm(cacheKey, cached.student, cached.values, true); }
+    else { document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-wifi"></i>Belum pernah buka link ini pas online.<br>Sambungkan internet sekali dulu ya, habis itu bisa isi biodata offline kapan aja.</div>`; }
+    return;
+  }
+
+  db.ref(DATA_PATH + '/homeroom/students').once('value').then(studSnap=>{
+    const students = toArray(studSnap.val());
+    const raw = decodeURIComponent(idParam || '');
+    const slug = slugifyName(raw);
+    const student = students.find(s => s && slugifyName(s.name) === slug) || students.find(s => s && s.id === raw);
+    if(!student){
+      if(cached){ renderStandaloneHomeroomForm(cacheKey, cached.student, cached.values, true); }
+      else document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Link tidak valid atau siswa tidak ditemukan.<br>Hubungi guru untuk link yang benar.</div>`;
+      return;
+    }
+    return db.ref(DATA_PATH + '/homeroom/biodata/' + student.id).once('value').then(bioSnap=>{
+      const values = bioSnap.val() || {};
+      writeLocal(cacheKey, { student, values });
+      renderStandaloneHomeroomForm(cacheKey, student, values, false);
+    });
+  }).catch(err=>{
+    console.error('Gagal memuat data siswa', err);
+    if(cached){ renderStandaloneHomeroomForm(cacheKey, cached.student, cached.values, true); }
+    else document.getElementById('standaloneInner').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Gagal memuat data. Coba lagi nanti.</div>`;
+  });
+}
+function renderStandaloneHomeroomForm(cacheKey, student, values, isOffline){
   const inner = document.getElementById('standaloneInner');
   inner.innerHTML = `
     <div class="standalone-header">
@@ -1265,23 +1484,9 @@ function renderStandaloneForm(student, values, isOffline){
     const data = {};
     inner.querySelectorAll('[data-field]').forEach(f=>{ data[f.getAttribute('data-field')] = f.value.trim(); });
     data.updatedAt = fullDateTime();
-    writeLocal(standaloneCacheKey(student.id), { student, values: data }); // always cache locally first
+    writeLocal(cacheKey, { student, values: data });
     const r = inner.querySelector('#standaloneResult');
-    r.className = 'bulk-result show';
-
-    if(navigator.onLine){
-      // Narrow write: only this student's biodata node, so banyak siswa isi bareng gak saling timpa.
-      db.ref(DATA_PATH + '/guruWali/biodata/' + student.id).set(data).then(()=>{
-        r.textContent = '✅ Tersimpan! Terima kasih, ' + student.name.split(' ')[0] + '.';
-      }).catch(err=>{
-        console.error('Gagal menyimpan biodata, disimpan di HP dulu', err);
-        queuePendingStandalone(student.id, data);
-        r.textContent = '📴 Internet lagi gangguan. Tersimpan di HP, nanti otomatis terkirim.';
-      });
-    } else {
-      queuePendingStandalone(student.id, data);
-      r.textContent = '📴 Tersimpan di HP (offline). Nanti otomatis terkirim kalau internet nyala.';
-    }
+    saveStandaloneWrite(DATA_PATH + '/homeroom/biodata/' + student.id, data, r, '✅ Tersimpan! Terima kasih, ' + student.name.split(' ')[0] + '.');
   };
 }
 
@@ -1294,8 +1499,11 @@ if('serviceWorker' in navigator){
 
 const urlParams = new URLSearchParams(location.search);
 const waliId = urlParams.get('wali');
+const hrId = urlParams.get('hr');
 if(waliId){
-  initStandalone(waliId);
+  initStandaloneWali(waliId);
+} else if(hrId){
+  initStandaloneHomeroom(hrId);
 } else {
   history.replaceState({ path:[], panel:null }, '', ''); // baseline so hardware back button navigates in-app first
   setTimeout(()=>{ const s=document.getElementById('splashScreen'); if(s) s.style.display='none'; }, 2300);
