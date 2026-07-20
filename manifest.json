@@ -1,7 +1,7 @@
 {
   "name": "Dwi Septiana",
-  "short_name": "Bu Dwi",
-  "start_url": "./dwi-septiana-app.html",
+  "short_name": "Dwi Septiana",
+  "start_url": "./https://dwi-septiana.vercel.app",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0a0e14",
