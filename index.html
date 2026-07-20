@@ -6,6 +6,7 @@
 <title>Dwi Septiana — Guru Matematika</title>
 <meta name="theme-color" content="#0a0e14">
 <link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
@@ -133,6 +134,7 @@ html,body{font-family:'Inter',sans-serif;background:var(--bg-deep);color:var(--t
 .att-chip.on[data-v="Sakit"]{background:rgba(167,139,250,.15);color:#a78bfa;border-color:rgba(167,139,250,.4);}
 .att-chip.on[data-v="Dispen"]{background:rgba(79,168,147,.15);color:var(--accent-secondary);border-color:rgba(79,168,147,.4);}
 .att-chip.on[data-v="Telat"]{background:rgba(224,166,58,.15);color:var(--accent-primary);border-color:rgba(224,166,58,.4);}
+.att-chip.on[data-v="Alpa"]{background:rgba(248,113,113,.15);color:var(--accent-red);border-color:rgba(248,113,113,.4);}
 
 .date-picker-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap;}
 .date-picker-row input[type="date"]{background:var(--bg-elevated);border:1px solid var(--border-default);color:var(--text-primary);border-radius:8px;padding:8px 10px;font-size:12px;font-family:'Inter';}
@@ -272,7 +274,7 @@ const VIOLATION_TYPES = [
   { value:'Cabut pelajaran', icon:'🚪' },
   { value:'Lainnya', icon:'📋' },
 ];
-const ATT_OPTS = ['Hadir','Izin','Sakit','Dispen','Telat'];
+const ATT_OPTS = ['Hadir','Izin','Sakit','Dispen','Telat','Alpa'];
 const ACCENTS = {
   amber:  {p:'#E0A63A', s:'#4FA893'},
   rose:   {p:'#fb7185', s:'#a78bfa'},
