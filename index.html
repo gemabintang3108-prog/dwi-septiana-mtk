@@ -299,6 +299,26 @@ const BIODATA_FIELDS = [
   { key:'catatan', label:'Catatan Tambahan', type:'textarea' },
 ];
 
+const HOMEROOM_BIODATA_FIELDS = [
+  { key:'namaLengkap', label:'Nama Lengkap', type:'text' },
+  { key:'namaPanggilan', label:'Nama Panggilan', type:'text' },
+  { key:'jk', label:'Jenis Kelamin', type:'select', options:['Laki-laki','Perempuan'] },
+  { key:'asalSmp', label:'Asal SMP', type:'text' },
+  { key:'jalurMasuk', label:'Masuk 12 Jalur Apa?', type:'select', options:['Prestasi Akademik','Prestasi Non Akademik','KJP','Domisili','Tahap Kedua'] },
+  { key:'alamat', label:'Alamat', type:'textarea' },
+  { key:'namaIbu', label:'Nama Ibu', type:'text' },
+  { key:'noHpIbu', label:'No. HP Ibu', type:'text' },
+  { key:'namaBapak', label:'Nama Bapak', type:'text' },
+  { key:'noHpBapak', label:'No. HP Bapak', type:'text' },
+  { key:'alamatRumah', label:'Alamat Rumah', type:'textarea' },
+  { key:'transportasi', label:'Ke Sekolah Naik Apa?', type:'text' },
+  { key:'tinggalBersama', label:'Di Rumah Tinggal Sama Siapa Saja?', type:'text' },
+  { key:'hobi', label:'Hobi Apa?', type:'text' },
+  { key:'motivasiMasuk12', label:'Motivasi Masuk ke 12', type:'textarea' },
+  { key:'citaCita', label:'Cita-cita', type:'text' },
+  { key:'harapanSetelahLulus', label:'Harapan Setelah Lulus dari 12', type:'textarea' },
+];
+
 let state = {
   avatar:null, accent:'amber',
   guruWali:{ className:'Wali Kelas', students:[], biodata:{}, raportColumns:{}, raportValues:{} },
@@ -626,9 +646,9 @@ function renderStudentWaliMenu(){
     <div class="card-item" onclick="navigate('raport')"><i class="fa-solid fa-graduation-cap"></i>Nilai Raport<div class="badge">Smt 1–5</div></div>
   </div>`;
 }
-function renderBiodataFormHtml(values){
+function renderBiodataFormHtml(fields, values){
   values = values || {};
-  return BIODATA_FIELDS.map(f=>{
+  return fields.map(f=>{
     const v = (values[f.key] || '').toString().replace(/"/g,'&quot;');
     if(f.type==='textarea'){
       return `<div class="form-group"><label class="form-label">${f.label}</label><textarea class="form-input" data-field="${f.key}" rows="3" placeholder="${f.placeholder||''}">${values[f.key]||''}</textarea></div>`;
@@ -647,7 +667,7 @@ function renderBiodataTab(cls, student){
       <div class="wali-link-row"><input type="text" readonly id="waliLinkInput" value="${link}"><button class="btn-sm" id="copyWaliLink">Salin</button></div>
       <div class="bulk-hint">Kirim link ini ke ${student.name} (WA/Classroom). Dia bisa isi biodatanya sendiri, tanpa lihat data siswa lain.</div>
     </div>
-    <div id="biodataFormWrap">${renderBiodataFormHtml(values)}</div>
+    <div id="biodataFormWrap">${renderBiodataFormHtml(BIODATA_FIELDS, values)}</div>
     <button class="btn-inline" id="saveBiodataBtn" data-student="${student.id}">💾 Simpan Biodata</button>
     ${values.updatedAt ? `<div class="bulk-hint">Terakhir diperbarui: ${values.updatedAt}</div>` : ''}`;
 }
@@ -711,7 +731,7 @@ function renderHomeroomBiodataTab(cls, student){
       <div class="wali-link-row"><input type="text" readonly id="hrLinkInput" value="${link}"><button class="btn-sm" id="copyHrLink">Salin</button></div>
       <div class="bulk-hint">Kirim link ini ke ${student.name} (WA/Classroom). Dia bisa isi biodatanya sendiri, tanpa lihat data siswa lain.</div>
     </div>
-    <div id="hrBiodataFormWrap">${renderBiodataFormHtml(values)}</div>
+    <div id="hrBiodataFormWrap">${renderBiodataFormHtml(HOMEROOM_BIODATA_FIELDS, values)}</div>
     <button class="btn-inline" id="saveHrBiodataBtn" data-student="${student.id}">💾 Simpan Biodata</button>
     ${values.updatedAt ? `<div class="bulk-hint">Terakhir diperbarui: ${values.updatedAt}</div>` : ''}`;
 }
@@ -1395,7 +1415,7 @@ function renderStandaloneWaliForm(cacheKey, ctx){
 
   const tabBody = inner.querySelector('#standaloneTabBody');
   if(standaloneTab === 'biodata'){
-    tabBody.innerHTML = `${renderBiodataFormHtml(values)}<button class="btn-submit" id="standaloneSaveBtn">💾 Simpan Biodata</button><div class="bulk-result" id="standaloneResult"></div>`;
+    tabBody.innerHTML = `${renderBiodataFormHtml(BIODATA_FIELDS, values)}<button class="btn-submit" id="standaloneSaveBtn">💾 Simpan Biodata</button><div class="bulk-result" id="standaloneResult"></div>`;
     tabBody.querySelector('#standaloneSaveBtn').onclick = ()=>{
       const data = {};
       tabBody.querySelectorAll('[data-field]').forEach(f=>{ data[f.getAttribute('data-field')] = f.value.trim(); });
@@ -1476,7 +1496,7 @@ function renderStandaloneHomeroomForm(cacheKey, student, values, isOffline){
       <div class="standalone-name">${student.name}</div>
       <div class="standalone-sub">${isOffline ? '📴 Mode offline — biodata akan disimpan di HP dan otomatis terkirim kalau internet nyala lagi.' : 'Isi biodata dirimu dengan lengkap dan benar ya 🙂'}</div>
     </div>
-    ${renderBiodataFormHtml(values)}
+    ${renderBiodataFormHtml(HOMEROOM_BIODATA_FIELDS, values)}
     <button class="btn-submit" id="standaloneSaveBtn">💾 Simpan Biodata</button>
     <div class="bulk-result" id="standaloneResult"></div>
   `;
