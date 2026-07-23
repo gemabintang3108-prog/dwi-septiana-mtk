@@ -13,6 +13,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
@@ -58,6 +60,7 @@ html,body{font-family:'Inter',sans-serif;background:var(--bg-deep);color:var(--t
 .cover-btn.guruwali{background:rgba(167,139,250,.1);border-color:rgba(167,139,250,.3);color:#a78bfa;}
 .cover-btn.perwalian{background:rgba(224,166,58,.1);border-color:rgba(224,166,58,.3);color:var(--accent-primary);}
 .cover-btn.matematika{background:rgba(79,168,147,.1);border-color:rgba(79,168,147,.3);color:var(--accent-secondary);}
+.cover-btn.laporan{background:rgba(56,189,248,.1);border-color:rgba(56,189,248,.3);color:#38bdf8;}
 @keyframes coverFadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
 @keyframes coverFadeDown{from{opacity:0;transform:translateY(-8px);}to{opacity:.6;transform:translateY(0);}}
 
@@ -206,6 +209,40 @@ textarea.form-input{resize:vertical;min-height:60px;}
 ::-webkit-scrollbar{width:4px;}
 ::-webkit-scrollbar-thumb{background:var(--border-default);border-radius:4px;}
 @media (max-width:400px){ .cover-title{font-size:22px;} .cover-btn{font-size:11px;padding:12px 6px;} .grid-3{gap:8px;} .card-item{padding:12px 4px;font-size:11px;} .modal-box{padding:16px;} }
+
+/* ---------- Laporan: PDF worksheet builder ---------- */
+.pdf-editor-hint{background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:10px;padding:12px 14px;font-size:11.5px;color:var(--text-secondary);line-height:1.6;margin-bottom:14px;}
+.pdf-toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.pdf-toolbar button{flex:1;min-width:100px;}
+.pdf-pages-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px;margin:0 -16px 14px;padding-left:16px;padding-right:16px;}
+.pdf-page-wrap{position:relative;display:inline-block;margin-right:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.35);vertical-align:top;touch-action:none;}
+.pdf-page-wrap canvas{display:block;}
+.pdf-page-label{position:absolute;top:6px;left:6px;background:rgba(10,14,20,.75);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;z-index:5;pointer-events:none;}
+.field-layer{position:absolute;inset:0;}
+.field-box{position:absolute;border:2px solid var(--accent-primary);background:rgba(224,166,58,.15);border-radius:4px;cursor:move;box-sizing:border-box;min-width:24px;min-height:16px;}
+.field-box.checkbox-type{background:rgba(56,189,248,.18);border-color:#38bdf8;}
+.field-box.selected{border-color:var(--accent-secondary);background:rgba(79,168,147,.22);z-index:20;}
+.field-box .fb-label{position:absolute;top:-19px;left:-2px;background:var(--accent-primary);color:#0a0e14;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px 5px 0 0;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;pointer-events:none;}
+.field-box.checkbox-type .fb-label{background:#38bdf8;}
+.field-box .fb-resize{position:absolute;right:-6px;bottom:-6px;width:16px;height:16px;background:var(--accent-secondary);border-radius:50%;border:2px solid #0a0e14;cursor:se-resize;}
+.field-box .fb-del{position:absolute;top:-19px;right:-2px;background:var(--accent-red);color:#fff;font-size:9px;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.field-input-overlay{position:absolute;box-sizing:border-box;border:1.5px solid var(--accent-secondary);background:rgba(255,255,255,.94);border-radius:4px;padding:2px 4px;font-size:11px;font-family:'Inter';color:#0a0e14;}
+.field-input-overlay textarea{width:100%;height:100%;border:none;background:transparent;resize:none;font-size:11px;font-family:'Inter';color:#0a0e14;padding:0;}
+.field-input-overlay input[type="text"]{width:100%;height:100%;border:none;background:transparent;font-size:11px;font-family:'Inter';color:#0a0e14;padding:0;}
+.field-input-overlay input[type="checkbox"]{width:100%;height:100%;margin:0;accent-color:var(--accent-secondary);}
+.field-settings-panel{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:10px;padding:14px;margin-bottom:14px;}
+.field-settings-panel .fs-row{display:flex;gap:8px;margin-bottom:8px;}
+.field-settings-panel .fs-row input,.field-settings-panel .fs-row select{flex:1;background:var(--bg-deep);border:1px solid var(--border-default);color:var(--text-primary);border-radius:6px;padding:7px 8px;font-size:12px;font-family:'Inter';}
+.template-item{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:8px;cursor:pointer;}
+.template-item:active{transform:scale(.99);background:var(--bg-hover);}
+.template-item i{font-size:18px;color:#38bdf8;flex-shrink:0;}
+.template-item .info{flex:1;min-width:0;}
+.template-item .name{font-weight:600;font-size:14px;}
+.template-item .meta{font-size:11px;color:var(--text-tertiary);}
+.instance-item{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.instance-item .info{flex:1;min-width:0;cursor:pointer;}
+.instance-item .name{font-weight:600;font-size:13px;}
+.instance-item .meta{font-size:10px;color:var(--text-tertiary);}
 </style>
 </head>
 <body>
@@ -228,6 +265,7 @@ textarea.form-input{resize:vertical;min-height:60px;}
       <button class="cover-btn guruwali" onclick="openTop('guruwali')"><i class="fa-solid fa-id-card-clip"></i>Guru Wali</button>
       <button class="cover-btn perwalian" onclick="openTop('perwalian')"><i class="fa-solid fa-users"></i>Perwalian</button>
       <button class="cover-btn matematika" onclick="openTop('matematika')"><i class="fa-solid fa-calculator"></i>Guru Matematika</button>
+      <button class="cover-btn laporan" onclick="openTop('laporan')"><i class="fa-solid fa-file-pdf"></i>Laporan</button>
     </div>
   </div>
 </div>
@@ -325,7 +363,8 @@ let state = {
   avatar:null, accent:'amber',
   guruWali:{ className:'Wali Kelas', students:[], biodata:{}, raportColumns:{}, raportValues:{} },
   homeroom:{ className:'Kelas Perwalian', students:[], attendance:{}, violations:[] },
-  mathClasses:[]
+  mathClasses:[],
+  reportTemplates:[]
 };
 let path = [];               // navigation stack, e.g. ['perwalian','kehadiran']
 let openStudentKey = null;    // studentId whose violation panel is open
@@ -425,7 +464,8 @@ function sanitizeIncoming(data){
   const out = Object.assign({ avatar:null, accent:'amber',
     guruWali:{ className:'Wali Kelas', students:[], biodata:{}, raportColumns:{}, raportValues:{} },
     homeroom:{ className:'Kelas Perwalian', students:[], attendance:{}, violations:[] },
-    mathClasses:[] }, data);
+    mathClasses:[],
+    reportTemplates:[] }, data);
   out.guruWali = out.guruWali || { className:'Wali Kelas', students:[], biodata:{}, raportColumns:{}, raportValues:{} };
   out.guruWali.students = toArray(out.guruWali.students);
   out.guruWali.biodata = out.guruWali.biodata || {};
@@ -444,6 +484,11 @@ function sanitizeIncoming(data){
     tugasValues: c.tugasValues || {},
     ujianColumns: toArray(c.ujianColumns).length ? toArray(c.ujianColumns) : ['UH 1'],
     ujianValues: c.ujianValues || {}
+  }));
+  out.reportTemplates = toArray(out.reportTemplates).map(t=>({
+    id:t.id, name:t.name, pdfBase64:t.pdfBase64, numPages:t.numPages||1,
+    fields: toArray(t.fields),
+    instances: toArray(t.instances).map(i=>({ id:i.id, name:i.name, createdAt:i.createdAt, values:i.values||{} }))
   }));
   return out;
 }
@@ -613,9 +658,14 @@ function render(){
         if(sub==='ujian') html += renderGrades(cls,'ujianColumns','ujianValues','UH');
       }
     }
+  } else if(path[0] === 'laporan'){
+    html = renderLaporanRoute(bc);
+    titleEl.textContent = laporanTitleText;
+    subEl.textContent = laporanSubText;
   }
   body.innerHTML = html;
   attachHandlers();
+  afterRenderLaporan();
 }
 
 /* ---------- Guru Wali ---------- */
@@ -1137,6 +1187,8 @@ function attachHandlers(){
       saveState();
     };
   });
+
+  if(path[0] === 'laporan') attachLaporanHandlers(body);
 }
 
 function currentClass(){
@@ -1288,6 +1340,515 @@ function exportExcel(){
 
   if(wb.SheetNames.length === 0){ alert('Belum ada data untuk diexport.'); return; }
   XLSX.writeFile(wb, 'Rekap_Dwi_Septiana.xlsx');
+}
+
+/* ==================================================================
+   LAPORAN — upload PDF apa saja lalu jadikan "lahan kerja" yang bisa
+   diisi (mirip liveworksheets). Field posisinya disimpan dalam
+   persen (0-100) relatif ke ukuran halaman PDF, jadi tetap presisi
+   di layar berapapun ukurannya.
+   ================================================================== */
+if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let laporanTitleText = 'Laporan';
+let laporanSubText = 'Pilih menu';
+let pdfPageSizes = [];        // {width,height} hasil render tiap halaman utk layar saat ini
+let selectedFieldId = null;   // field yang sedang dipilih di editor
+let pendingRenderTemplateId = null; // dipakai afterRenderLaporan buat tau PDF mana yg perlu dirender ulang
+
+function laporanCurrentTemplate(){ return state.reportTemplates.find(t=>t.id===path[1]); }
+function laporanCurrentInstance(tpl){ return tpl && tpl.instances.find(i=>i.id===path[3]); }
+
+function renderLaporanRoute(bc){
+  if(path.length === 1){
+    laporanTitleText = 'Laporan'; laporanSubText = `${state.reportTemplates.length} template`;
+    return renderLaporanList();
+  }
+  const tpl = laporanCurrentTemplate();
+  if(!tpl){ path=['laporan']; laporanTitleText='Laporan'; laporanSubText='Pilih menu'; return renderLaporanList(); }
+  bc += ` <span>›</span> <span class="clickable" onclick="navigateTo(['laporan'])">Laporan</span>`;
+  if(path.length === 2){
+    laporanTitleText = tpl.name; laporanSubText = 'Pilih menu';
+    bc += ` <span>›</span> <span>${tpl.name}</span>`;
+    return `<div class="breadcrumb">${bc}</div>` + renderTemplateMenu(tpl);
+  }
+  const sub = path[2];
+  bc += ` <span>›</span> <span class="clickable" onclick="navigateTo(['laporan','${tpl.id}'])">${tpl.name}</span>`;
+  if(sub === 'edit'){
+    laporanTitleText = tpl.name; laporanSubText = 'Atur Lahan Isian';
+    bc += ` <span>›</span> <span>Atur Lahan</span>`;
+    return `<div class="breadcrumb">${bc}</div>` + renderTemplateEditor(tpl);
+  }
+  if(sub === 'new'){
+    laporanTitleText = tpl.name; laporanSubText = 'Laporan Baru';
+    bc += ` <span>›</span> <span>Laporan Baru</span>`;
+    return `<div class="breadcrumb">${bc}</div>` + renderFillScreen(tpl, null);
+  }
+  if(sub === 'riwayat'){
+    if(path.length === 3){
+      laporanTitleText = tpl.name; laporanSubText = 'Riwayat Laporan';
+      bc += ` <span>›</span> <span>Riwayat</span>`;
+      return `<div class="breadcrumb">${bc}</div>` + renderInstanceList(tpl);
+    }
+    const inst = laporanCurrentInstance(tpl);
+    if(!inst){ path=['laporan',tpl.id,'riwayat']; laporanSubText='Riwayat Laporan'; return renderInstanceList(tpl); }
+    laporanTitleText = tpl.name; laporanSubText = inst.name;
+    bc += ` <span>›</span> <span class="clickable" onclick="navigateTo(['laporan','${tpl.id}','riwayat'])">Riwayat</span> <span>›</span> <span>${inst.name}</span>`;
+    return `<div class="breadcrumb">${bc}</div>` + renderFillScreen(tpl, inst);
+  }
+  return '';
+}
+
+function renderLaporanList(){
+  let html = `<div class="pdf-editor-hint"><i class="fa-solid fa-circle-info"></i> Upload PDF format laporan (misal dari kepala sekolah), lalu susun kotak-kotak isian di atasnya. Format beda-beda? Upload PDF baru kapan aja, nggak perlu ubah aplikasi.</div>`;
+  html += `<div class="add-row"><input type="file" id="uploadPdfInput" accept="application/pdf" style="display:none;"><button class="btn-bulk" id="uploadPdfBtn" type="button" style="flex:1;"><i class="fa-solid fa-file-arrow-up"></i> Upload PDF Template Baru</button></div>`;
+  if(state.reportTemplates.length === 0){
+    html += `<div class="empty-state"><i class="fa-solid fa-file-pdf"></i>Belum ada template laporan. Upload PDF dulu ya.</div>`;
+    return html;
+  }
+  html += `<div class="student-list">`;
+  state.reportTemplates.forEach(t=>{
+    html += `<div class="template-item" data-nav-template="${t.id}">
+      <i class="fa-solid fa-file-pdf"></i>
+      <div class="info"><div class="name">${t.name}</div><div class="meta">${t.numPages} halaman · ${t.fields.length} kolom isian · ${t.instances.length} laporan dibuat</div></div>
+      <button class="del-btn" data-del-template="${t.id}"><i class="fa-solid fa-trash"></i></button>
+    </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderTemplateMenu(tpl){
+  return `<div class="grid-2">
+    <div class="card-item" onclick="navigate('edit')"><i class="fa-solid fa-pen-ruler"></i>Atur Lahan Isian<div class="badge">${tpl.fields.length} kolom</div></div>
+    <div class="card-item" onclick="navigate('new')"><i class="fa-solid fa-plus"></i>Buat Laporan Baru</div>
+    <div class="card-item" onclick="navigate('riwayat')"><i class="fa-solid fa-clock-rotate-left"></i>Riwayat Laporan<div class="badge">${tpl.instances.length} laporan</div></div>
+  </div>`;
+}
+
+function renderInstanceList(tpl){
+  let html = `<button class="btn-inline" id="newInstanceBtn" style="margin-bottom:16px;"><i class="fa-solid fa-plus"></i> Buat Laporan Baru</button>`;
+  if(tpl.instances.length === 0){
+    html += `<div class="empty-state"><i class="fa-solid fa-clock-rotate-left"></i>Belum ada laporan yang dibuat dari template ini.</div>`;
+    return html;
+  }
+  html += `<div class="student-list">`;
+  [...tpl.instances].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).forEach(i=>{
+    html += `<div class="instance-item">
+      <div class="info" data-nav-instance="${i.id}"><div class="name">${i.name}</div><div class="meta">${i.createdAt||''}</div></div>
+      <button class="btn-sm" data-download-instance="${i.id}"><i class="fa-solid fa-download"></i></button>
+      <button class="del-btn" data-del-instance="${i.id}"><i class="fa-solid fa-trash"></i></button>
+    </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+/* ---------- editor: susun kotak isian di atas PDF ---------- */
+function renderTemplateEditor(tpl){
+  pendingRenderTemplateId = tpl.id;
+  let html = `<div class="pdf-editor-hint"><i class="fa-solid fa-hand-pointer"></i> Tap di area kosong pada PDF buat nambah kotak isian. Geser buat pindah posisi, tarik titik biru pojok kanan-bawah buat ubah ukuran.</div>`;
+  html += `<div class="pdf-toolbar">
+    <button class="btn-sm" id="addTextFieldBtn"><i class="fa-solid fa-font"></i> + Teks</button>
+    <button class="btn-sm" id="addChecklistFieldBtn"><i class="fa-solid fa-square-check"></i> + Centang</button>
+  </div>`;
+  html += `<div class="pdf-pages-scroll" id="pdfPagesScroll"><div class="empty-state"><i class="fa-solid fa-spinner fa-spin-pulse"></i>Memuat PDF...</div></div>`;
+  html += `<div id="fieldSettingsWrap"></div>`;
+  return html;
+}
+
+/* ---------- isi laporan (instance baru / lihat & edit yg lama) ---------- */
+function renderFillScreen(tpl, inst){
+  pendingRenderTemplateId = tpl.id;
+  let html = '';
+  if(!inst){
+    html += `<div class="form-group"><label class="form-label">Nama Laporan Ini</label><input type="text" class="form-input" id="instanceNameInput" placeholder="Contoh: Laporan Bulan Juli - XI-3" value="Laporan ${new Date().toLocaleDateString('id-ID',{month:'long',year:'numeric'})}"></div>`;
+  } else {
+    html += `<div class="form-group"><label class="form-label">Nama Laporan Ini</label><input type="text" class="form-input" id="instanceNameInput" value="${inst.name}"></div>`;
+  }
+  html += `<div class="pdf-editor-hint"><i class="fa-solid fa-pen"></i> Isi langsung di atas PDF sesuai kotak yang sudah disusun. Jangan lupa simpan setelah selesai.</div>`;
+  html += `<div class="pdf-pages-scroll" id="pdfPagesScroll"><div class="empty-state"><i class="fa-solid fa-spinner fa-spin-pulse"></i>Memuat PDF...</div></div>`;
+  html += `<button class="btn-inline" id="saveInstanceBtn" style="margin-top:6px;"><i class="fa-solid fa-floppy-disk"></i> ${inst?'Simpan Perubahan':'Simpan Laporan'}</button>`;
+  html += `<button class="btn-sm" id="downloadInstanceBtn" style="width:100%;padding:11px;"><i class="fa-solid fa-download"></i> Unduh sebagai PDF</button>`;
+  return html;
+}
+
+/* ---------- render PDF pages ke canvas (dipanggil setelah HTML masuk ke DOM) ---------- */
+function afterRenderLaporan(){
+  if(path[0] !== 'laporan' || !pendingRenderTemplateId) { pendingRenderTemplateId = null; return; }
+  const tpl = state.reportTemplates.find(t=>t.id===pendingRenderTemplateId);
+  pendingRenderTemplateId = null;
+  if(!tpl || !tpl.pdfBase64) return;
+  const mode = path[2]; // 'edit' | 'new' | 'riwayat'
+  const isEditor = mode === 'edit';
+  const inst = isEditor ? null : (mode==='riwayat' ? laporanCurrentInstance(tpl) : null);
+  renderAllPdfPages(tpl, isEditor, inst);
+}
+
+async function renderAllPdfPages(tpl, isEditor, inst){
+  const scroll = document.getElementById('pdfPagesScroll');
+  if(!scroll) return;
+  try{
+    const bytes = Uint8Array.from(atob(tpl.pdfBase64), c=>c.charCodeAt(0));
+    const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+    scroll.innerHTML = '';
+    pdfPageSizes = [];
+    const targetWidth = Math.min(340, (window.innerWidth || 360) - 48);
+    for(let p=1; p<=doc.numPages; p++){
+      const page = await doc.getPage(p);
+      const viewport0 = page.getViewport({ scale:1 });
+      const scale = targetWidth / viewport0.width;
+      const viewport = page.getViewport({ scale });
+      const wrap = document.createElement('div');
+      wrap.className = 'pdf-page-wrap';
+      wrap.style.width = viewport.width+'px';
+      wrap.style.height = viewport.height+'px';
+      wrap.setAttribute('data-page', p);
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width; canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      const label = document.createElement('div');
+      label.className = 'pdf-page-label';
+      label.textContent = 'Hal. '+p;
+      const layer = document.createElement('div');
+      layer.className = 'field-layer';
+      layer.setAttribute('data-page', p);
+      wrap.appendChild(canvas); wrap.appendChild(label); wrap.appendChild(layer);
+      scroll.appendChild(wrap);
+      pdfPageSizes[p] = { width: viewport.width, height: viewport.height };
+    }
+    if(isEditor) wireEditorLayer(tpl);
+    else wireFillLayer(tpl, inst);
+  }catch(err){
+    console.error('Gagal render PDF', err);
+    scroll.innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Gagal membuka PDF ini.</div>`;
+  }
+}
+
+/* ---------- editor: interaksi tap/drag/resize kotak ---------- */
+function wireEditorLayer(tpl){
+  document.querySelectorAll('.pdf-page-wrap').forEach(wrap=>{
+    const pageNum = Number(wrap.getAttribute('data-page'));
+    wrap.addEventListener('click', (e)=>{
+      if(e.target.closest('.field-box')) return; // klik di kotak yg sudah ada, jangan bikin baru
+      const rect = wrap.getBoundingClientRect();
+      const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+      const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+      pendingFieldPos = { page: pageNum, x: Math.max(0,xPct-10), y: Math.max(0,yPct-2) };
+      openAddFieldModal(tpl);
+    });
+  });
+  renderFieldBoxes(tpl);
+}
+let pendingFieldPos = null;
+function openAddFieldModal(tpl){
+  const modal = openModal(`
+    <div class="modal-header"><h3><i class="fa-solid fa-plus" style="color:var(--accent-primary);"></i> Tambah Kotak Isian</h3>
+      <button class="modal-close" id="mClose"><i class="fa-solid fa-times"></i></button></div>
+    <div class="form-group"><label class="form-label">Nama Kolom</label><input type="text" class="form-input" id="newFieldLabel" placeholder="Contoh: Nama Guru Wali"></div>
+    <div class="form-group"><label class="form-label">Jenis</label><select class="form-input" id="newFieldType">
+      <option value="text">Teks pendek (1 baris)</option>
+      <option value="textarea">Teks panjang (paragraf)</option>
+      <option value="checkbox">Centang / checklist</option>
+    </select></div>
+    <button class="btn-submit" id="confirmAddField"><i class="fa-solid fa-check"></i> Tambahkan</button>
+  `);
+  modal.querySelector('#mClose').onclick = ()=>{ pendingFieldPos=null; modal.remove(); };
+  modal.querySelector('#confirmAddField').onclick = ()=>{
+    const label = modal.querySelector('#newFieldLabel').value.trim() || 'Kolom';
+    const type = modal.querySelector('#newFieldType').value;
+    if(!pendingFieldPos) return;
+    const defaultW = type==='checkbox' ? 5 : (type==='textarea' ? 34 : 22);
+    const defaultH = type==='checkbox' ? 4 : (type==='textarea' ? 16 : 5);
+    tpl.fields.push({ id:uid(), page:pendingFieldPos.page, x:pendingFieldPos.x, y:pendingFieldPos.y, w:defaultW, h:defaultH, type, label });
+    pendingFieldPos = null;
+    saveState();
+    modal.remove();
+    renderFieldBoxes(tpl);
+    updateTemplateMeta(tpl);
+  };
+}
+function renderFieldBoxes(tpl){
+  document.querySelectorAll('.field-layer').forEach(layer=>{ layer.innerHTML=''; });
+  tpl.fields.forEach(f=>{
+    const layer = document.querySelector(`.field-layer[data-page="${f.page}"]`);
+    if(!layer) return;
+    const box = document.createElement('div');
+    box.className = 'field-box' + (f.type==='checkbox' ? ' checkbox-type' : '') + (selectedFieldId===f.id ? ' selected' : '');
+    box.style.left = f.x+'%'; box.style.top = f.y+'%'; box.style.width = f.w+'%'; box.style.height = f.h+'%';
+    box.setAttribute('data-field-id', f.id);
+    box.innerHTML = `<span class="fb-label">${f.label}</span><span class="fb-del" data-del-field="${f.id}"><i class="fa-solid fa-times"></i></span><span class="fb-resize"></span>`;
+    layer.appendChild(box);
+    wireFieldBoxDrag(box, tpl, f, layer.parentElement);
+  });
+}
+function wireFieldBoxDrag(box, tpl, f, wrapEl){
+  const delBtn = box.querySelector('.fb-del');
+  delBtn.onclick = (e)=>{
+    e.stopPropagation();
+    tpl.fields = tpl.fields.filter(x=>x.id!==f.id);
+    saveState(); renderFieldBoxes(tpl); updateTemplateMeta(tpl);
+    if(selectedFieldId===f.id) closeFieldSettings();
+  };
+  box.addEventListener('click', (e)=>{
+    if(e.target===delBtn || e.target.closest('.fb-del') || e.target.closest('.fb-resize')) return;
+    e.stopPropagation();
+    selectedFieldId = f.id;
+    renderFieldBoxes(tpl);
+    openFieldSettings(tpl, f);
+  });
+  const resizeHandle = box.querySelector('.fb-resize');
+  let dragging = null;
+  const startDrag = (clientX, clientY, mode)=>{
+    const rect = wrapEl.getBoundingClientRect();
+    dragging = { mode, startX:clientX, startY:clientY, rect, origX:f.x, origY:f.y, origW:f.w, origH:f.h };
+  };
+  const moveDrag = (clientX, clientY)=>{
+    if(!dragging) return;
+    const dxPct = ((clientX - dragging.startX) / dragging.rect.width) * 100;
+    const dyPct = ((clientY - dragging.startY) / dragging.rect.height) * 100;
+    if(dragging.mode==='move'){
+      f.x = Math.min(100-f.w, Math.max(0, dragging.origX + dxPct));
+      f.y = Math.min(100-f.h, Math.max(0, dragging.origY + dyPct));
+    } else {
+      f.w = Math.min(100-f.x, Math.max(4, dragging.origW + dxPct));
+      f.h = Math.min(100-f.y, Math.max(3, dragging.origH + dyPct));
+    }
+    box.style.left=f.x+'%'; box.style.top=f.y+'%'; box.style.width=f.w+'%'; box.style.height=f.h+'%';
+  };
+  const endDrag = ()=>{ if(dragging){ dragging=null; saveState(); if(selectedFieldId===f.id) syncFieldSettingsInputs(f); } };
+  box.addEventListener('mousedown', e=>{ if(e.target.closest('.fb-resize')||e.target.closest('.fb-del')) return; e.preventDefault(); startDrag(e.clientX,e.clientY,'move'); });
+  box.addEventListener('touchstart', e=>{ if(e.target.closest('.fb-resize')||e.target.closest('.fb-del')) return; const t=e.touches[0]; startDrag(t.clientX,t.clientY,'move'); }, {passive:true});
+  resizeHandle.addEventListener('mousedown', e=>{ e.preventDefault(); e.stopPropagation(); startDrag(e.clientX,e.clientY,'resize'); });
+  resizeHandle.addEventListener('touchstart', e=>{ e.stopPropagation(); const t=e.touches[0]; startDrag(t.clientX,t.clientY,'resize'); }, {passive:true});
+  window.addEventListener('mousemove', e=>moveDrag(e.clientX,e.clientY));
+  window.addEventListener('touchmove', e=>{ if(dragging && e.touches[0]) moveDrag(e.touches[0].clientX,e.touches[0].clientY); }, {passive:true});
+  window.addEventListener('mouseup', endDrag);
+  window.addEventListener('touchend', endDrag);
+}
+function openFieldSettings(tpl, f){
+  const wrap = document.getElementById('fieldSettingsWrap');
+  if(!wrap) return;
+  wrap.innerHTML = `<div class="field-settings-panel">
+    <div class="detail-label">PENGATURAN KOLOM</div>
+    <div class="fs-row"><input type="text" id="fsLabel" value="${f.label}" placeholder="Nama kolom"></div>
+    <div class="fs-row"><select id="fsType">
+      <option value="text" ${f.type==='text'?'selected':''}>Teks pendek</option>
+      <option value="textarea" ${f.type==='textarea'?'selected':''}>Teks panjang</option>
+      <option value="checkbox" ${f.type==='checkbox'?'selected':''}>Centang</option>
+    </select></div>
+    <button class="btn-sm" id="fsCloseBtn" style="width:100%;">Selesai</button>
+  </div>`;
+  const labelInput = wrap.querySelector('#fsLabel');
+  const typeSelect = wrap.querySelector('#fsType');
+  labelInput.oninput = ()=>{ f.label = labelInput.value.trim() || 'Kolom'; saveState(); renderFieldBoxes(tpl); openFieldSettingsKeepFocus(tpl,f); };
+  typeSelect.onchange = ()=>{ f.type = typeSelect.value; saveState(); renderFieldBoxes(tpl); };
+  wrap.querySelector('#fsCloseBtn').onclick = ()=>{ closeFieldSettings(); renderFieldBoxes(tpl); };
+}
+function openFieldSettingsKeepFocus(){ /* label sudah update langsung di atas, tidak perlu re-render panel penuh */ }
+function syncFieldSettingsInputs(f){
+  const labelInput = document.getElementById('fsLabel');
+  if(labelInput && document.activeElement!==labelInput) labelInput.value = f.label;
+}
+function closeFieldSettings(){
+  selectedFieldId = null;
+  const wrap = document.getElementById('fieldSettingsWrap');
+  if(wrap) wrap.innerHTML = '';
+}
+function updateTemplateMeta(tpl){ /* no-op placeholder, jumlah kolom otomatis kebaca dari tpl.fields.length saat render ulang list */ }
+
+/* ---------- fill screen: kotak jadi input beneran ---------- */
+function wireFillLayer(tpl, inst){
+  const values = inst ? Object.assign({}, inst.values) : {};
+  window.currentFillValues = values;
+  tpl.fields.forEach(f=>{
+    const layer = document.querySelector(`.field-layer[data-page="${f.page}"]`);
+    if(!layer) return;
+    const holder = document.createElement('div');
+    holder.className = 'field-input-overlay';
+    holder.style.left=f.x+'%'; holder.style.top=f.y+'%'; holder.style.width=f.w+'%'; holder.style.height=f.h+'%';
+    const val = values[f.id];
+    if(f.type==='textarea'){
+      holder.innerHTML = `<textarea data-fval="${f.id}">${val||''}</textarea>`;
+    } else if(f.type==='checkbox'){
+      holder.innerHTML = `<input type="checkbox" data-fval="${f.id}" ${val?'checked':''}>`;
+    } else {
+      holder.innerHTML = `<input type="text" data-fval="${f.id}" value="${(val||'').toString().replace(/"/g,'&quot;')}">`;
+    }
+    layer.appendChild(holder);
+  });
+  document.querySelectorAll('[data-fval]').forEach(inp=>{
+    inp.oninput = ()=>{
+      const fid = inp.getAttribute('data-fval');
+      window.currentFillValues[fid] = inp.type==='checkbox' ? inp.checked : inp.value;
+    };
+    inp.onchange = inp.oninput;
+  });
+  const saveBtn = document.getElementById('saveInstanceBtn');
+  if(saveBtn) saveBtn.onclick = ()=>{
+    const name = document.getElementById('instanceNameInput').value.trim() || 'Laporan';
+    if(inst){
+      inst.name = name; inst.values = window.currentFillValues;
+    } else {
+      const newInst = { id:uid(), name, createdAt: fullDateTime(), values: window.currentFillValues };
+      tpl.instances.push(newInst);
+      inst = newInst;
+    }
+    saveState();
+    saveBtn.innerHTML = '✅ Tersimpan';
+    setTimeout(()=>{ saveBtn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan`; }, 1400);
+    if(path[2]==='new'){ navigateTo(['laporan', tpl.id, 'riwayat', inst.id]); }
+  };
+  const dlBtn = document.getElementById('downloadInstanceBtn');
+  if(dlBtn) dlBtn.onclick = ()=>exportInstanceToPdf(tpl, { name: document.getElementById('instanceNameInput').value.trim()||'Laporan', values: window.currentFillValues });
+}
+
+/* ---------- export: cetak isian ke PDF baru pakai pdf-lib ---------- */
+async function exportInstanceToPdf(tpl, inst){
+  try{
+    const bytes = Uint8Array.from(atob(tpl.pdfBase64), c=>c.charCodeAt(0));
+    const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+    const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+    const pages = pdfDoc.getPages();
+    tpl.fields.forEach(f=>{
+      const page = pages[f.page-1];
+      if(!page) return;
+      const { width, height } = page.getSize();
+      const val = inst.values[f.id];
+      const boxX = (f.x/100) * width;
+      const boxY = height - (f.y/100)*height - (f.h/100)*height; // PDF y itu dari bawah
+      const boxW = (f.w/100) * width;
+      const boxH = (f.h/100) * height;
+      if(f.type==='checkbox'){
+        if(val){ page.drawText('X', { x: boxX + boxW*0.25, y: boxY + boxH*0.2, size: Math.max(8, boxH*0.7), font, color: PDFLib.rgb(0.1,0.1,0.1) }); }
+      } else {
+        const text = (val||'').toString();
+        const fontSize = Math.max(7, Math.min(11, boxH*0.55));
+        const maxCharsPerLine = Math.max(6, Math.floor(boxW / (fontSize*0.52)));
+        const words = text.split(/\s+/);
+        let lines = []; let cur = '';
+        words.forEach(w=>{
+          if((cur+' '+w).trim().length > maxCharsPerLine){ lines.push(cur.trim()); cur = w; }
+          else cur = (cur+' '+w).trim();
+        });
+        if(cur) lines.push(cur);
+        const maxLines = Math.max(1, Math.floor(boxH / (fontSize*1.25)));
+        lines = lines.slice(0, maxLines);
+        lines.forEach((line, idx)=>{
+          page.drawText(line, { x: boxX+2, y: boxY + boxH - (idx+1)*(fontSize*1.2), size: fontSize, font, color: PDFLib.rgb(0.05,0.05,0.05) });
+        });
+      }
+    });
+    const outBytes = await pdfDoc.save();
+    const blob = new Blob([outBytes], { type:'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = (inst.name||'Laporan').replace(/[^a-z0-9 _-]/gi,'') + '.pdf';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  }catch(err){
+    console.error('Gagal export PDF', err);
+    alert('Gagal membuat PDF. Coba lagi ya.');
+  }
+}
+
+/* ---------- wiring tombol-tombol umum di layar Laporan (dipanggil dari attachHandlers) ---------- */
+function attachLaporanHandlers(body){
+  const uploadBtn = body.querySelector('#uploadPdfBtn');
+  if(uploadBtn) uploadBtn.onclick = ()=>body.querySelector('#uploadPdfInput').click();
+  const uploadInput = body.querySelector('#uploadPdfInput');
+  if(uploadInput) uploadInput.onchange = async (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const name = prompt('Nama template ini (misal: Laporan Bulanan Guru Wali)', file.name.replace(/\.pdf$/i,'')) || file.name;
+    const reader = new FileReader();
+    reader.onload = async ()=>{
+      const base64 = reader.result.split(',')[1];
+      let numPages = 1;
+      try{
+        const bytes = Uint8Array.from(atob(base64), c=>c.charCodeAt(0));
+        const doc = await pdfjsLib.getDocument({data:bytes}).promise;
+        numPages = doc.numPages;
+      }catch(err){ console.error('Gagal baca jumlah halaman', err); }
+      state.reportTemplates.push({ id:uid(), name, pdfBase64:base64, numPages, fields:[], instances:[] });
+      saveState(); render();
+    };
+    reader.readAsDataURL(file);
+  };
+  body.querySelectorAll('[data-nav-template]').forEach(row=>{
+    row.onclick = ()=>{ navigate(row.getAttribute('data-nav-template')); };
+  });
+  body.querySelectorAll('[data-del-template]').forEach(btn=>{
+    btn.onclick = (e)=>{
+      e.stopPropagation();
+      if(!confirm('Hapus template ini beserta semua riwayat laporannya?')) return;
+      state.reportTemplates = state.reportTemplates.filter(t=>t.id!==btn.getAttribute('data-del-template'));
+      saveState(); render();
+    };
+  });
+  const newInstanceBtn = body.querySelector('#newInstanceBtn');
+  if(newInstanceBtn) newInstanceBtn.onclick = ()=>{ path=['laporan', path[1], 'new']; syncHistory(); render(); };
+  body.querySelectorAll('[data-nav-instance]').forEach(row=>{
+    row.onclick = ()=>{ path=['laporan', path[1], 'riwayat', row.getAttribute('data-nav-instance')]; syncHistory(); render(); };
+  });
+  body.querySelectorAll('[data-del-instance]').forEach(btn=>{
+    btn.onclick = (e)=>{
+      e.stopPropagation();
+      if(!confirm('Hapus laporan ini?')) return;
+      const tpl = laporanCurrentTemplate();
+      tpl.instances = tpl.instances.filter(i=>i.id!==btn.getAttribute('data-del-instance'));
+      saveState(); render();
+    };
+  });
+  body.querySelectorAll('[data-download-instance]').forEach(btn=>{
+    btn.onclick = (e)=>{
+      e.stopPropagation();
+      const tpl = laporanCurrentTemplate();
+      const inst = tpl.instances.find(i=>i.id===btn.getAttribute('data-download-instance'));
+      if(tpl && inst) exportInstanceToPdf(tpl, inst);
+    };
+  });
+  const addTextFieldBtn = body.querySelector('#addTextFieldBtn');
+  if(addTextFieldBtn) addTextFieldBtn.onclick = ()=>{
+    const tpl = laporanCurrentTemplate();
+    pendingFieldPos = { page:1, x:10, y:10 };
+    const modal = openModal(`
+      <div class="modal-header"><h3><i class="fa-solid fa-font" style="color:var(--accent-primary);"></i> Tambah Kolom Teks</h3>
+        <button class="modal-close" id="mClose"><i class="fa-solid fa-times"></i></button></div>
+      <div class="form-group"><label class="form-label">Nama Kolom</label><input type="text" class="form-input" id="newFieldLabel" placeholder="Contoh: Nama Guru Wali"></div>
+      <div class="form-group"><label class="form-label">Jenis</label><select class="form-input" id="newFieldType">
+        <option value="text">Teks pendek (1 baris)</option>
+        <option value="textarea">Teks panjang (paragraf)</option>
+      </select></div>
+      <div class="form-group"><label class="form-label">Halaman ke-</label><input type="number" class="form-input" id="newFieldPage" min="1" max="${tpl.numPages}" value="1"></div>
+      <button class="btn-submit" id="confirmAddField"><i class="fa-solid fa-check"></i> Tambahkan (lalu geser posisinya di PDF)</button>
+    `);
+    modal.querySelector('#mClose').onclick = ()=>modal.remove();
+    modal.querySelector('#confirmAddField').onclick = ()=>{
+      const label = modal.querySelector('#newFieldLabel').value.trim() || 'Kolom';
+      const type = modal.querySelector('#newFieldType').value;
+      const pageNum = Math.max(1, Math.min(tpl.numPages, Number(modal.querySelector('#newFieldPage').value)||1));
+      tpl.fields.push({ id:uid(), page:pageNum, x:8, y:8, w: type==='textarea'?34:22, h: type==='textarea'?16:5, type, label });
+      saveState(); modal.remove(); renderFieldBoxes(tpl);
+    };
+  };
+  const addChecklistFieldBtn = body.querySelector('#addChecklistFieldBtn');
+  if(addChecklistFieldBtn) addChecklistFieldBtn.onclick = ()=>{
+    const tpl = laporanCurrentTemplate();
+    const modal = openModal(`
+      <div class="modal-header"><h3><i class="fa-solid fa-square-check" style="color:#38bdf8;"></i> Tambah Kotak Centang</h3>
+        <button class="modal-close" id="mClose"><i class="fa-solid fa-times"></i></button></div>
+      <div class="form-group"><label class="form-label">Nama</label><input type="text" class="form-input" id="newFieldLabel" placeholder="Contoh: BK"></div>
+      <div class="form-group"><label class="form-label">Halaman ke-</label><input type="number" class="form-input" id="newFieldPage" min="1" max="${tpl.numPages}" value="1"></div>
+      <button class="btn-submit" id="confirmAddField"><i class="fa-solid fa-check"></i> Tambahkan (lalu geser posisinya di PDF)</button>
+    `);
+    modal.querySelector('#mClose').onclick = ()=>modal.remove();
+    modal.querySelector('#confirmAddField').onclick = ()=>{
+      const label = modal.querySelector('#newFieldLabel').value.trim() || 'Centang';
+      const pageNum = Math.max(1, Math.min(tpl.numPages, Number(modal.querySelector('#newFieldPage').value)||1));
+      tpl.fields.push({ id:uid(), page:pageNum, x:8, y:8, w:5, h:4, type:'checkbox', label });
+      saveState(); modal.remove(); renderFieldBoxes(tpl);
+    };
+  };
 }
 
 /* ---------- Standalone student self-fill mode ----------
