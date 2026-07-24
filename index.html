@@ -203,6 +203,10 @@ textarea.form-input{resize:vertical;min-height:60px;}
 .standalone-avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--accent-primary),var(--accent-secondary));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:#0a0e14;margin:0 auto 12px;}
 .standalone-name{font-size:18px;font-weight:800;}
 .standalone-sub{font-size:12px;color:var(--text-tertiary);margin-top:4px;}
+.standalone-success{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:70px 20px 40px;min-height:60vh;animation:successPop .45s cubic-bezier(.16,1,.3,1);}
+.standalone-success-title{font-size:20px;font-weight:800;margin-bottom:10px;}
+.standalone-success-sub{font-size:13px;color:var(--text-secondary);line-height:1.6;max-width:320px;margin-bottom:26px;}
+@keyframes successPop{from{opacity:0;transform:scale(.92) translateY(10px);}to{opacity:1;transform:scale(1) translateY(0);}}
 ::-webkit-scrollbar{width:4px;}
 ::-webkit-scrollbar-thumb{background:var(--border-default);border-radius:4px;}
 @media (max-width:400px){ .cover-title{font-size:22px;} .cover-btn{font-size:11px;padding:12px 6px;} .grid-3{gap:8px;} .card-item{padding:12px 4px;font-size:11px;} .modal-box{padding:16px;} }
@@ -1315,20 +1319,34 @@ function flushPendingStandalone(){
     }).catch(err=>console.error('Gagal sinkron data offline', err));
   });
 }
-function saveStandaloneWrite(path, data, resultEl, successMsg){
-  resultEl.className = 'bulk-result show';
+function saveStandaloneWrite(path, data, onDone){
+  // onDone(status) dipanggil dengan 'ok' atau 'queued' — pemanggil yang atur tampilannya
   if(navigator.onLine){
     db.ref(path).set(data).then(()=>{
-      resultEl.textContent = successMsg;
+      onDone('ok');
     }).catch(err=>{
       console.error('Gagal menyimpan, disimpan di HP dulu', err);
       queuePendingWrite(path, data);
-      resultEl.textContent = '📴 Internet lagi gangguan. Tersimpan di HP, nanti otomatis terkirim.';
+      onDone('queued');
     });
   } else {
     queuePendingWrite(path, data);
-    resultEl.textContent = '📴 Tersimpan di HP (offline). Nanti otomatis terkirim kalau internet nyala.';
+    onDone('queued');
   }
+}
+function showStandaloneSuccess(status, title, subtitle, onBack){
+  const inner = document.getElementById('standaloneInner');
+  const icon = status === 'ok' ? 'fa-circle-check' : 'fa-cloud-arrow-up';
+  const color = status === 'ok' ? 'var(--accent-green)' : 'var(--accent-primary)';
+  inner.innerHTML = `
+    <div class="standalone-success">
+      <i class="fa-solid ${icon}" style="font-size:56px;color:${color};margin-bottom:18px;"></i>
+      <div class="standalone-success-title">${title}</div>
+      <div class="standalone-success-sub">${subtitle}</div>
+      <button class="btn-submit" id="standaloneBackBtn" style="max-width:280px;">Kembali ke Form</button>
+    </div>
+  `;
+  inner.querySelector('#standaloneBackBtn').onclick = onBack;
 }
 function sanitizeRaportColumns(raw){
   raw = raw || {};
@@ -1417,23 +1435,27 @@ function renderStandaloneWaliForm(cacheKey, ctx){
 
   const tabBody = inner.querySelector('#standaloneTabBody');
   if(standaloneTab === 'biodata'){
-    tabBody.innerHTML = `${renderBiodataFormHtml(BIODATA_FIELDS, values)}<button class="btn-submit" id="standaloneSaveBtn">💾 Simpan Biodata</button><div class="bulk-result" id="standaloneResult"></div>`;
+    tabBody.innerHTML = `${renderBiodataFormHtml(BIODATA_FIELDS, values)}<button class="btn-submit" id="standaloneSaveBtn">💾 Simpan Biodata</button>`;
     tabBody.querySelector('#standaloneSaveBtn').onclick = ()=>{
       const data = {};
       tabBody.querySelectorAll('[data-field]').forEach(f=>{ data[f.getAttribute('data-field')] = f.value.trim(); });
       data.updatedAt = fullDateTime();
       ctx.values = data;
       writeLocal(cacheKey, ctx);
-      const r = tabBody.querySelector('#standaloneResult');
-      saveStandaloneWrite(DATA_PATH + '/guruWali/biodata/' + student.id, data, r, '✅ Biodata tersimpan! Terima kasih, ' + student.name.split(' ')[0] + '.');
+      saveStandaloneWrite(DATA_PATH + '/guruWali/biodata/' + student.id, data, (status)=>{
+        if(status === 'ok'){
+          showStandaloneSuccess('ok', '✅ Biodata Tersimpan!', 'Terima kasih, ' + student.name.split(' ')[0] + '. Datanya sudah masuk ke guru.', ()=>renderStandaloneWaliForm(cacheKey, ctx));
+        } else {
+          showStandaloneSuccess('queued', '📴 Tersimpan di HP', 'Internet lagi nggak stabil, tapi tenang — biodatanya otomatis terkirim begitu internet nyala lagi. Jangan hapus link ini dulu ya.', ()=>renderStandaloneWaliForm(cacheKey, ctx));
+        }
+      });
     };
   } else {
     const cols = raportColumns[standaloneSem] || [];
     const semVals = (raportValues[standaloneSem] && raportValues[standaloneSem][student.id]) || {};
     const semTabs = [1,2,3,4,5].map(s=>`<button class="sem-tab ${standaloneSem===s?'active':''}" data-sem="${s}" style="font-size:11px;padding:6px 10px;">Smt ${s}</button>`).join('');
     tabBody.innerHTML = `<div class="sem-tab-row">${semTabs}</div>${renderRaportFormHtml(cols, semVals)}
-      ${cols.length ? `<button class="btn-submit" id="standaloneSaveRaportBtn">💾 Simpan Nilai Raport Smt ${standaloneSem}</button>` : ''}
-      <div class="bulk-result" id="standaloneResult"></div>`;
+      ${cols.length ? `<button class="btn-submit" id="standaloneSaveRaportBtn">💾 Simpan Nilai Raport Smt ${standaloneSem}</button>` : ''}`;
     tabBody.querySelectorAll('.sem-tab[data-sem]').forEach(btn=>{
       btn.onclick = ()=>{ standaloneSem = Number(btn.getAttribute('data-sem')); renderStandaloneWaliForm(cacheKey, ctx); };
     });
@@ -1446,8 +1468,14 @@ function renderStandaloneWaliForm(cacheKey, ctx){
       if(!ctx.raportValues[standaloneSem]) ctx.raportValues[standaloneSem] = {};
       ctx.raportValues[standaloneSem][student.id] = data;
       writeLocal(cacheKey, ctx);
-      const r = tabBody.querySelector('#standaloneResult');
-      saveStandaloneWrite(DATA_PATH + '/guruWali/raportValues/' + standaloneSem + '/' + student.id, data, r, '✅ Nilai raport Semester ' + standaloneSem + ' tersimpan!');
+      const semNow = standaloneSem;
+      saveStandaloneWrite(DATA_PATH + '/guruWali/raportValues/' + semNow + '/' + student.id, data, (status)=>{
+        if(status === 'ok'){
+          showStandaloneSuccess('ok', '✅ Nilai Tersimpan!', 'Nilai raport Semester ' + semNow + ' sudah masuk ke guru.', ()=>renderStandaloneWaliForm(cacheKey, ctx));
+        } else {
+          showStandaloneSuccess('queued', '📴 Tersimpan di HP', 'Internet lagi nggak stabil, tapi tenang — nilainya otomatis terkirim begitu internet nyala lagi. Jangan hapus link ini dulu ya.', ()=>renderStandaloneWaliForm(cacheKey, ctx));
+        }
+      });
     };
   }
 }
@@ -1500,15 +1528,19 @@ function renderStandaloneHomeroomForm(cacheKey, student, values, isOffline){
     </div>
     ${renderBiodataFormHtml(HOMEROOM_BIODATA_FIELDS, values)}
     <button class="btn-submit" id="standaloneSaveBtn">💾 Simpan Biodata</button>
-    <div class="bulk-result" id="standaloneResult"></div>
   `;
   inner.querySelector('#standaloneSaveBtn').onclick = ()=>{
     const data = {};
     inner.querySelectorAll('[data-field]').forEach(f=>{ data[f.getAttribute('data-field')] = f.value.trim(); });
     data.updatedAt = fullDateTime();
     writeLocal(cacheKey, { student, values: data });
-    const r = inner.querySelector('#standaloneResult');
-    saveStandaloneWrite(DATA_PATH + '/homeroom/biodata/' + student.id, data, r, '✅ Tersimpan! Terima kasih, ' + student.name.split(' ')[0] + '.');
+    saveStandaloneWrite(DATA_PATH + '/homeroom/biodata/' + student.id, data, (status)=>{
+      if(status === 'ok'){
+        showStandaloneSuccess('ok', '✅ Biodata Tersimpan!', 'Terima kasih, ' + student.name.split(' ')[0] + '. Datanya sudah masuk ke guru.', ()=>renderStandaloneHomeroomForm(cacheKey, student, data, false));
+      } else {
+        showStandaloneSuccess('queued', '📴 Tersimpan di HP', 'Internet lagi nggak stabil, tapi tenang — biodatanya otomatis terkirim begitu internet nyala lagi. Jangan hapus link ini dulu ya.', ()=>renderStandaloneHomeroomForm(cacheKey, student, data, false));
+      }
+    });
   };
 }
 
