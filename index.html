@@ -447,7 +447,8 @@ function sanitizeIncoming(data){
     tugasColumns: toArray(c.tugasColumns).length ? toArray(c.tugasColumns) : ['Tugas 1'],
     tugasValues: c.tugasValues || {},
     ujianColumns: toArray(c.ujianColumns).length ? toArray(c.ujianColumns) : ['UH 1'],
-    ujianValues: c.ujianValues || {}
+    ujianValues: c.ujianValues || {},
+    majuData: c.majuData || {}
   }));
   return out;
 }
@@ -607,7 +608,7 @@ function render(){
         html = `<div class="breadcrumb">${bc}</div>` + renderClassMenu(cls);
       } else {
         const sub = path[2];
-        const label = {keh:'Kehadiran', tugas:'Nilai Tugas', ujian:'Nilai Ujian'}[sub];
+        const label = {keh:'Kehadiran', tugas:'Nilai Tugas', ujian:'Nilai Ujian', maju:'Keaktifan'}[sub];
         titleEl.textContent = cls.className;
         subEl.textContent = label;
         bc += ` <span>›</span> <span class="clickable" onclick="navigateTo(['matematika'])">Kelas</span> <span>›</span> <span class="clickable" onclick="navigateTo(['matematika','${cls.id}'])">${cls.className}</span> <span>›</span> <span>${label}</span>`;
@@ -615,6 +616,7 @@ function render(){
         if(sub==='keh') html += renderKehadiran(cls);
         if(sub==='tugas') html += renderGrades(cls,'tugasColumns','tugasValues','Tugas');
         if(sub==='ujian') html += renderGrades(cls,'ujianColumns','ujianValues','UH');
+        if(sub==='maju') html += renderMaju(cls);
       }
     }
   }
@@ -765,10 +767,11 @@ function renderClassList(){
   return html;
 }
 function renderClassMenu(cls){
-  return `<div class="grid-3">
+  return `<div class="grid-2">
     <div class="card-item" onclick="navigate('keh')"><i class="fa-solid fa-clipboard-check"></i>Kehadiran</div>
     <div class="card-item" onclick="navigate('tugas')"><i class="fa-solid fa-pen"></i>Nilai Tugas</div>
     <div class="card-item" onclick="navigate('ujian')"><i class="fa-solid fa-square-root-variable"></i>Nilai Ujian</div>
+    <div class="card-item" onclick="navigate('maju')"><i class="fa-solid fa-hand-point-up"></i>Keaktifan<div class="badge">Siapa sering maju</div></div>
   </div>`;
 }
 
@@ -801,6 +804,49 @@ function renderKehadiran(cls){
   return html;
 }
 function monthLabel(dateStr){ return new Date(dateStr+'T00:00:00').toLocaleDateString('id-ID',{month:'long',year:'numeric'}); }
+
+/* ---------- Keaktifan (Maju ke depan) ---------- */
+function renderMaju(cls){
+  if(!cls.majuData) cls.majuData = {};
+  let html = `<div class="date-picker-row">
+    <span style="font-size:12px;color:var(--text-secondary);">Tanggal</span>
+    <input type="date" id="attDateInput" value="${attDate}">
+  </div>`;
+  html += renderAddStudentRow(cls);
+  if(cls.students.length === 0){
+    html += `<div class="empty-state"><i class="fa-solid fa-user-group"></i>Belum ada siswa di kelas ini.</div>`;
+    return html;
+  }
+  const dateRec = cls.majuData[attDate] || {};
+  html += `<div class="bulk-hint" style="margin-bottom:10px;">Tap <b>+</b> tiap kali anak maju ke depan jawab soal (atau aktif hal lain). Tap <b>−</b> kalau salah pencet.</div>`;
+  html += cls.students.map(s=>{
+    const count = dateRec[s.id] || 0;
+    return `<div class="att-row">
+      <span class="name">${s.name}${s.absen?` <span style="color:var(--text-tertiary);font-weight:400;">(No. ${s.absen})</span>`:''}</span>
+      <div class="att-opts" style="align-items:center;">
+        <button class="btn-sm maju-btn" data-action="minus" data-student="${s.id}">−</button>
+        <span style="min-width:26px;text-align:center;font-weight:800;font-size:14px;">${count}</span>
+        <button class="btn-sm maju-btn" data-action="plus" data-student="${s.id}" style="background:var(--accent-primary);color:#0a0e14;border-color:var(--accent-primary);">+</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Rekap bulanan, diurutkan dari yang paling sering maju
+  html += `<h3 style="font-size:13px;margin:18px 0 10px;color:var(--text-secondary);">Rekap Bulanan — ${monthLabel(attDate)}</h3>`;
+  const month = attDate.slice(0,7);
+  const totals = cls.students.map(s=>{
+    let total = 0;
+    Object.entries(cls.majuData).forEach(([date,rec])=>{ if(date.startsWith(month) && rec[s.id]) total += rec[s.id]; });
+    return { s, total };
+  }).sort((a,b)=> b.total - a.total);
+  html += `<div class="table-wrap"><table><thead><tr><th>#</th><th>Siswa</th><th>Total Maju</th></tr></thead><tbody>`;
+  totals.forEach((t,i)=>{
+    const medal = i===0 && t.total>0 ? '🏆 ' : '';
+    html += `<tr><td>${i+1}</td><td>${medal}${t.s.name}</td><td style="text-align:center;font-weight:700;">${t.total||'—'}</td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+  return html;
+}
 
 /* ---------- Pelanggaran ---------- */
 function renderPelanggaran(cls){
@@ -946,7 +992,7 @@ function openBulkAddClasses(){
       const key = name.toLowerCase();
       if(existingNames.has(key)){ skipped++; return; }
       existingNames.add(key);
-      state.mathClasses.push({ id:uid(), className:name, students:[], attendance:{}, tugasColumns:['Tugas 1'], tugasValues:{}, ujianColumns:['UH 1'], ujianValues:{} });
+      state.mathClasses.push({ id:uid(), className:name, students:[], attendance:{}, tugasColumns:['Tugas 1'], tugasValues:{}, ujianColumns:['UH 1'], ujianValues:{}, majuData:{} });
       added++;
     });
     if(added > 0){ saveState(); render(); }
@@ -1022,6 +1068,25 @@ function attachHandlers(){
       if(!cls.attendance[attDate]) cls.attendance[attDate] = {};
       if(cls.attendance[attDate][sid] === v) delete cls.attendance[attDate][sid];
       else cls.attendance[attDate][sid] = v;
+      saveState(); render();
+    };
+  });
+
+  body.querySelectorAll('.maju-btn').forEach(btn=>{
+    btn.onclick = ()=>{
+      const cls = currentClass();
+      const sid = btn.getAttribute('data-student');
+      const action = btn.getAttribute('data-action');
+      if(!cls.majuData) cls.majuData = {};
+      if(!cls.majuData[attDate]) cls.majuData[attDate] = {};
+      const current = cls.majuData[attDate][sid] || 0;
+      if(action === 'plus'){
+        cls.majuData[attDate][sid] = current + 1;
+      } else {
+        const next = current - 1;
+        if(next <= 0) delete cls.majuData[attDate][sid];
+        else cls.majuData[attDate][sid] = next;
+      }
       saveState(); render();
     };
   });
@@ -1288,6 +1353,17 @@ function exportExcel(){
     const ujianRows = [['Siswa', ...c.ujianColumns]];
     c.students.forEach(s=>{ ujianRows.push([s.name, ...c.ujianColumns.map(col=>(c.ujianValues[s.id]&&c.ujianValues[s.id][col]!==undefined)?c.ujianValues[s.id][col]:'')]); });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ujianRows), (c.className+' Ujian').slice(0,31));
+
+    if(c.majuData && Object.keys(c.majuData).length){
+      const majuTotals = c.students.map(s=>{
+        let total = 0;
+        Object.values(c.majuData).forEach(rec=>{ if(rec[s.id]) total += rec[s.id]; });
+        return { name: s.name, absen: s.absen||'', total };
+      }).sort((a,b)=> b.total - a.total);
+      const majuRows = [['Siswa','No Absen','Total Maju']];
+      majuTotals.forEach(t=> majuRows.push([t.name, t.absen, t.total]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(majuRows), (c.className+' Keaktifan').slice(0,31));
+    }
   });
 
   if(wb.SheetNames.length === 0){ alert('Belum ada data untuk diexport.'); return; }
