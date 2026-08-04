@@ -155,6 +155,9 @@ td input{width:100%;padding:5px 6px;font-size:12px;text-align:center;background:
 .section-title-row h2{font-size:15px;font-weight:800;}
 .btn-sm{background:var(--bg-elevated);border:1px solid var(--border-default);color:var(--text-secondary);border-radius:8px;padding:7px 12px;font-size:11px;font-weight:700;cursor:pointer;}
 .btn-sm:active{transform:scale(.96);}
+.export-option{width:100%;display:flex;align-items:center;gap:12px;padding:13px 14px;margin-bottom:8px;border-radius:10px;border:1px solid var(--border-default);background:var(--bg-elevated);color:var(--text-primary);font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer;text-align:left;}
+.export-option:active{transform:scale(.98);background:var(--bg-hover);}
+.export-option i{font-size:16px;color:var(--accent-primary);width:20px;text-align:center;flex-shrink:0;}
 
 .empty-state{text-align:center;color:var(--text-tertiary);padding:40px 10px;font-size:13px;}
 .empty-state i{display:block;font-size:26px;margin-bottom:10px;}
@@ -628,7 +631,10 @@ function render(){
 function renderGuruWaliList(cls){
   let html = renderAddStudentRow(cls);
   if(cls.students.length){
-    html += `<div class="add-row"><button class="btn-bulk" id="copyAllLinksBtn" type="button" style="flex:1;"><i class="fa-solid fa-link"></i> Salin Semua Link Biodata</button></div>`;
+    html += `<div class="add-row">
+      <button class="btn-bulk" id="copyAllLinksBtn" type="button" style="flex:1;"><i class="fa-solid fa-link"></i> Salin Semua Link Biodata</button>
+      <button class="btn-bulk" onclick="openGuruWaliExport()" type="button" style="flex:1;"><i class="fa-solid fa-file-excel"></i> Download Data</button>
+    </div>`;
   }
   if(cls.students.length === 0){
     html += `<div class="empty-state"><i class="fa-solid fa-user-group"></i>Belum ada siswa di daftar Guru Wali. Tambahkan lewat tombol di atas.</div>`;
@@ -701,10 +707,11 @@ function renderRaportTab(cls, student){
 
 /* ---------- Perwalian menu ---------- */
 function renderPerwalianMenu(){
-  return `<div class="grid-3">
+  return `<div class="grid-2">
     <div class="card-item" onclick="navigate('kehadiran')"><i class="fa-solid fa-clipboard-check"></i>Kehadiran<div class="badge">Rekap bulanan</div></div>
     <div class="card-item" onclick="navigate('pelanggaran')"><i class="fa-solid fa-triangle-exclamation"></i>Pelanggaran<div class="badge">Per anak</div></div>
     <div class="card-item" onclick="navigate('biodata')"><i class="fa-solid fa-id-card"></i>Biodata<div class="badge">Isi mandiri</div></div>
+    <div class="card-item" onclick="openPerwalianExport()"><i class="fa-solid fa-file-excel"></i>Download<div class="badge">Excel</div></div>
   </div>`;
 }
 
@@ -772,6 +779,7 @@ function renderClassMenu(cls){
     <div class="card-item" onclick="navigate('tugas')"><i class="fa-solid fa-pen"></i>Nilai Tugas</div>
     <div class="card-item" onclick="navigate('ujian')"><i class="fa-solid fa-square-root-variable"></i>Nilai Ujian</div>
     <div class="card-item" onclick="navigate('maju')"><i class="fa-solid fa-hand-point-up"></i>Keaktifan<div class="badge">Siapa sering maju</div></div>
+    <div class="card-item" onclick="openMathExport('${cls.id}')"><i class="fa-solid fa-file-excel"></i>Download<div class="badge">Excel</div></div>
   </div>`;
 }
 
@@ -1309,65 +1317,184 @@ window.openSettings = function(){
   modal.querySelector('#exportBtn').onclick = exportExcel;
 };
 
-/* ---------- Excel export ---------- */
-function exportExcel(){
+/* ---------- Excel export: reusable sheet builders ---------- */
+function buildKehadiranSheet(cls){
+  if(!cls.students.length) return null;
+  const rows = [['Siswa','No Absen', ...ATT_OPTS]];
+  cls.students.forEach(s=>{
+    const counts={}; ATT_OPTS.forEach(o=>counts[o]=0);
+    Object.values(cls.attendance).forEach(rec=>{ if(rec[s.id]) counts[rec[s.id]]++; });
+    rows.push([s.name, s.absen||'', ...ATT_OPTS.map(o=>counts[o])]);
+  });
+  return rows;
+}
+function buildPelanggaranSheet(cls){
+  if(!cls.violations.length) return null;
+  const rows = [['Siswa','Jenis','Catatan','Tanggal']];
+  cls.violations.forEach(v=>{
+    const s = cls.students.find(s=>s.id===v.studentId);
+    rows.push([s?s.name:'-', v.category, v.description||'-', v.date]);
+  });
+  return rows;
+}
+function buildBiodataSheet(students, biodata, fields){
+  if(!students.length) return null;
+  const rows = [['Nama', ...fields.map(f=>f.label)]];
+  students.forEach(s=>{
+    const b = (biodata && biodata[s.id]) || {};
+    rows.push([s.name, ...fields.map(f=> b[f.key]||'')]);
+  });
+  return rows;
+}
+function buildRaportSheets(cls){
+  const sheets = [];
+  for(let sem=1; sem<=5; sem++){
+    const cols = (cls.raportColumns && cls.raportColumns[sem]) || [];
+    if(!cols.length || !cls.students.length) continue;
+    const vals = (cls.raportValues && cls.raportValues[sem]) || {};
+    const rows = [['Siswa', ...cols]];
+    cls.students.forEach(s=>{
+      rows.push([s.name, ...cols.map(c=> (vals[s.id]&&vals[s.id][c]!==undefined)?vals[s.id][c]:'')]);
+    });
+    sheets.push({ name: `Raport Smt ${sem}`, rows });
+  }
+  return sheets;
+}
+function buildTugasUjianSheet(cls, colsKey, valsKey){
+  if(!cls.students.length) return null;
+  const cols = cls[colsKey], vals = cls[valsKey];
+  const rows = [['Siswa', ...cols]];
+  cls.students.forEach(s=>{ rows.push([s.name, ...cols.map(col=>(vals[s.id]&&vals[s.id][col]!==undefined)?vals[s.id][col]:'')]); });
+  return rows;
+}
+function buildMajuSheet(cls){
+  if(!cls.majuData || !Object.keys(cls.majuData).length || !cls.students.length) return null;
+  const totals = cls.students.map(s=>{
+    let total = 0;
+    Object.values(cls.majuData).forEach(rec=>{ if(rec[s.id]) total += rec[s.id]; });
+    return { name: s.name, absen: s.absen||'', total };
+  }).sort((a,b)=> b.total - a.total);
+  const rows = [['Siswa','No Absen','Total Maju']];
+  totals.forEach(t=> rows.push([t.name, t.absen, t.total]));
+  return rows;
+}
+function downloadSheets(sheetsList, filename){
   const wb = XLSX.utils.book_new();
-
-  // Kehadiran Perwalian
-  const hr = state.homeroom;
-  if(hr.students.length){
-    const rows = [['Siswa','No Absen', ...ATT_OPTS]];
-    hr.students.forEach(s=>{
-      const counts={}; ATT_OPTS.forEach(o=>counts[o]=0);
-      Object.values(hr.attendance).forEach(rec=>{ if(rec[s.id]) counts[rec[s.id]]++; });
-      rows.push([s.name, s.absen||'', ...ATT_OPTS.map(o=>counts[o])]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Kehadiran Perwalian');
-  }
-
-  // Pelanggaran
-  if(hr.violations.length){
-    const rows = [['Siswa','Jenis','Catatan','Tanggal']];
-    hr.violations.forEach(v=>{
-      const s = hr.students.find(s=>s.id===v.studentId);
-      rows.push([s?s.name:'-', v.category, v.description||'-', v.date]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Pelanggaran');
-  }
-
-  // Math classes
-  state.mathClasses.forEach(c=>{
-    if(!c.students.length) return;
-    const kehRows = [['Siswa','No Absen', ...ATT_OPTS]];
-    c.students.forEach(s=>{
-      const counts={}; ATT_OPTS.forEach(o=>counts[o]=0);
-      Object.values(c.attendance).forEach(rec=>{ if(rec[s.id]) counts[rec[s.id]]++; });
-      kehRows.push([s.name, s.absen||'', ...ATT_OPTS.map(o=>counts[o])]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kehRows), (c.className+' Keh').slice(0,31));
-
-    const tugasRows = [['Siswa', ...c.tugasColumns]];
-    c.students.forEach(s=>{ tugasRows.push([s.name, ...c.tugasColumns.map(col=>(c.tugasValues[s.id]&&c.tugasValues[s.id][col]!==undefined)?c.tugasValues[s.id][col]:'')]); });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tugasRows), (c.className+' Tugas').slice(0,31));
-
-    const ujianRows = [['Siswa', ...c.ujianColumns]];
-    c.students.forEach(s=>{ ujianRows.push([s.name, ...c.ujianColumns.map(col=>(c.ujianValues[s.id]&&c.ujianValues[s.id][col]!==undefined)?c.ujianValues[s.id][col]:'')]); });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ujianRows), (c.className+' Ujian').slice(0,31));
-
-    if(c.majuData && Object.keys(c.majuData).length){
-      const majuTotals = c.students.map(s=>{
-        let total = 0;
-        Object.values(c.majuData).forEach(rec=>{ if(rec[s.id]) total += rec[s.id]; });
-        return { name: s.name, absen: s.absen||'', total };
-      }).sort((a,b)=> b.total - a.total);
-      const majuRows = [['Siswa','No Absen','Total Maju']];
-      majuTotals.forEach(t=> majuRows.push([t.name, t.absen, t.total]));
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(majuRows), (c.className+' Keaktifan').slice(0,31));
+  let any = false;
+  sheetsList.forEach(sh=>{
+    if(sh && sh.rows && sh.rows.length > 1){
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sh.rows), sh.name.slice(0,31));
+      any = true;
     }
   });
+  if(!any){ alert('Belum ada data untuk diexport.'); return; }
+  XLSX.writeFile(wb, filename);
+}
 
-  if(wb.SheetNames.length === 0){ alert('Belum ada data untuk diexport.'); return; }
-  XLSX.writeFile(wb, 'Rekap_Dwi_Septiana.xlsx');
+/* ---- Export per-bagian: Guru Wali ---- */
+function exportGuruWaliBiodata(){
+  downloadSheets([{ name:'Biodata', rows: buildBiodataSheet(state.guruWali.students, state.guruWali.biodata, BIODATA_FIELDS) }], 'GuruWali_Biodata.xlsx');
+}
+function exportGuruWaliRaport(){
+  downloadSheets(buildRaportSheets(state.guruWali), 'GuruWali_NilaiRaport.xlsx');
+}
+function exportGuruWaliSemua(){
+  const sheets = [{ name:'Biodata', rows: buildBiodataSheet(state.guruWali.students, state.guruWali.biodata, BIODATA_FIELDS) }, ...buildRaportSheets(state.guruWali)];
+  downloadSheets(sheets, 'GuruWali_Semua.xlsx');
+}
+
+/* ---- Export per-bagian: Perwalian ---- */
+function exportPerwalianKehadiran(){
+  downloadSheets([{ name:'Kehadiran', rows: buildKehadiranSheet(state.homeroom) }], 'Perwalian_Kehadiran.xlsx');
+}
+function exportPerwalianPelanggaran(){
+  downloadSheets([{ name:'Pelanggaran', rows: buildPelanggaranSheet(state.homeroom) }], 'Perwalian_Pelanggaran.xlsx');
+}
+function exportPerwalianBiodata(){
+  downloadSheets([{ name:'Biodata', rows: buildBiodataSheet(state.homeroom.students, state.homeroom.biodata, HOMEROOM_BIODATA_FIELDS) }], 'Perwalian_Biodata.xlsx');
+}
+function exportPerwalianSemua(){
+  const sheets = [
+    { name:'Kehadiran', rows: buildKehadiranSheet(state.homeroom) },
+    { name:'Pelanggaran', rows: buildPelanggaranSheet(state.homeroom) },
+    { name:'Biodata', rows: buildBiodataSheet(state.homeroom.students, state.homeroom.biodata, HOMEROOM_BIODATA_FIELDS) }
+  ];
+  downloadSheets(sheets, 'Perwalian_Semua.xlsx');
+}
+
+/* ---- Export per-bagian: kelas Matematika ---- */
+function exportMathKehadiran(cls){ downloadSheets([{ name:'Kehadiran', rows: buildKehadiranSheet(cls) }], cls.className+'_Kehadiran.xlsx'); }
+function exportMathTugas(cls){ downloadSheets([{ name:'Nilai Tugas', rows: buildTugasUjianSheet(cls,'tugasColumns','tugasValues') }], cls.className+'_NilaiTugas.xlsx'); }
+function exportMathUjian(cls){ downloadSheets([{ name:'Nilai Ujian', rows: buildTugasUjianSheet(cls,'ujianColumns','ujianValues') }], cls.className+'_NilaiUjian.xlsx'); }
+function exportMathMaju(cls){ downloadSheets([{ name:'Keaktifan', rows: buildMajuSheet(cls) }], cls.className+'_Keaktifan.xlsx'); }
+function exportMathSemua(cls){
+  const sheets = [
+    { name:'Kehadiran', rows: buildKehadiranSheet(cls) },
+    { name:'Nilai Tugas', rows: buildTugasUjianSheet(cls,'tugasColumns','tugasValues') },
+    { name:'Nilai Ujian', rows: buildTugasUjianSheet(cls,'ujianColumns','ujianValues') },
+    { name:'Keaktifan', rows: buildMajuSheet(cls) }
+  ];
+  downloadSheets(sheets, cls.className+'_Semua.xlsx');
+}
+
+/* ---- Modal picker: pilih data mana yang mau di-download ---- */
+function openExportModal(title, items){
+  const rows = items.map((it,i)=>`<button type="button" class="export-option" data-idx="${i}"><i class="fa-solid ${it.icon}"></i> ${it.label}</button>`).join('');
+  const modal = openModal(`
+    <div class="modal-header"><h3><i class="fa-solid fa-file-excel" style="color:var(--accent-primary);"></i> ${title}</h3>
+      <button class="modal-close" id="mClose"><i class="fa-solid fa-times"></i></button></div>
+    <div class="bulk-hint">Pilih data yang mau di-download ke Excel.</div>
+    ${rows}
+  `);
+  modal.querySelector('#mClose').onclick = ()=>modal.remove();
+  items.forEach((it,i)=>{
+    modal.querySelector(`[data-idx="${i}"]`).onclick = ()=>{ it.fn(); modal.remove(); };
+  });
+}
+function openGuruWaliExport(){
+  openExportModal('Download Data Guru Wali', [
+    { label:'Biodata', icon:'fa-id-card', fn: exportGuruWaliBiodata },
+    { label:'Nilai Raport', icon:'fa-graduation-cap', fn: exportGuruWaliRaport },
+    { label:'Semua Data Guru Wali', icon:'fa-layer-group', fn: exportGuruWaliSemua },
+  ]);
+}
+function openPerwalianExport(){
+  openExportModal('Download Data Perwalian', [
+    { label:'Kehadiran', icon:'fa-clipboard-check', fn: exportPerwalianKehadiran },
+    { label:'Pelanggaran', icon:'fa-triangle-exclamation', fn: exportPerwalianPelanggaran },
+    { label:'Biodata', icon:'fa-id-card', fn: exportPerwalianBiodata },
+    { label:'Semua Data Perwalian', icon:'fa-layer-group', fn: exportPerwalianSemua },
+  ]);
+}
+function openMathExport(clsId){
+  const cls = state.mathClasses.find(c=>c.id===clsId);
+  if(!cls) return;
+  openExportModal('Download Data ' + cls.className, [
+    { label:'Kehadiran', icon:'fa-clipboard-check', fn: ()=>exportMathKehadiran(cls) },
+    { label:'Nilai Tugas', icon:'fa-pen', fn: ()=>exportMathTugas(cls) },
+    { label:'Nilai Ujian', icon:'fa-square-root-variable', fn: ()=>exportMathUjian(cls) },
+    { label:'Keaktifan (Maju)', icon:'fa-hand-point-up', fn: ()=>exportMathMaju(cls) },
+    { label:'Semua Data Kelas', icon:'fa-layer-group', fn: ()=>exportMathSemua(cls) },
+  ]);
+}
+
+/* ---------- Excel export: semua data (dari Pengaturan) ---------- */
+function exportExcel(){
+  const sheets = [
+    { name:'Kehadiran Perwalian', rows: buildKehadiranSheet(state.homeroom) },
+    { name:'Pelanggaran', rows: buildPelanggaranSheet(state.homeroom) },
+    { name:'Biodata Perwalian', rows: buildBiodataSheet(state.homeroom.students, state.homeroom.biodata, HOMEROOM_BIODATA_FIELDS) },
+    { name:'Biodata Guru Wali', rows: buildBiodataSheet(state.guruWali.students, state.guruWali.biodata, BIODATA_FIELDS) },
+    ...buildRaportSheets(state.guruWali).map(sh=>({ name: 'GW ' + sh.name, rows: sh.rows }))
+  ];
+  state.mathClasses.forEach(c=>{
+    if(!c.students.length) return;
+    sheets.push({ name: (c.className+' Keh').slice(0,31), rows: buildKehadiranSheet(c) });
+    sheets.push({ name: (c.className+' Tugas').slice(0,31), rows: buildTugasUjianSheet(c,'tugasColumns','tugasValues') });
+    sheets.push({ name: (c.className+' Ujian').slice(0,31), rows: buildTugasUjianSheet(c,'ujianColumns','ujianValues') });
+    sheets.push({ name: (c.className+' Keaktifan').slice(0,31), rows: buildMajuSheet(c) });
+  });
+  downloadSheets(sheets, 'Rekap_Dwi_Septiana.xlsx');
 }
 
 /* ---------- Standalone student self-fill mode ----------
