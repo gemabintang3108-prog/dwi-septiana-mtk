@@ -838,6 +838,11 @@ function renderKehadiran(cls){
   return html;
 }
 function monthLabel(dateStr){ return new Date(dateStr+'T00:00:00').toLocaleDateString('id-ID',{month:'long',year:'numeric'}); }
+const MONTH_NAMES_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+function monthLabelFromKey(key){
+  const [y,m] = key.split('-');
+  return `${MONTH_NAMES_ID[parseInt(m,10)-1]} ${y}`;
+}
 
 /* ---------- Keaktifan (Maju ke depan) ---------- */
 function renderMaju(cls){
@@ -1035,6 +1040,42 @@ function openBulkAddClasses(){
     resultEl.textContent = `✅ ${added} kelas ditambahkan${skipped?`, ${skipped} dilewati karena nama sudah ada`:''}.`;
     modal.querySelector('#bulkText').value = '';
     if(added > 0) setTimeout(()=>modal.remove(), 1100);
+  };
+}
+
+/* ---------- month/year picker for exports ---------- */
+function openMonthPickerModal(onConfirm){
+  const now = new Date();
+  const defaultMonth = attDate ? attDate.slice(0,7) : now.toISOString().slice(0,7);
+  const defYear = defaultMonth.split('-')[0];
+  const defMonthNum = defaultMonth.split('-')[1];
+  const yearNow = now.getFullYear();
+  const years = [];
+  for(let y = yearNow+1; y >= yearNow-3; y--) years.push(y);
+  const monthOptions = MONTH_NAMES_ID.map((m,i)=>{
+    const val = String(i+1).padStart(2,'0');
+    return `<option value="${val}" ${val===defMonthNum?'selected':''}>${m}</option>`;
+  }).join('');
+  const yearOptions = years.map(y=>`<option value="${y}" ${String(y)===defYear?'selected':''}>${y}</option>`).join('');
+  const modal = openModal(`
+    <div class="modal-header"><h3><i class="fa-solid fa-calendar-days" style="color:var(--accent-primary);"></i> Pilih Periode Kehadiran</h3>
+      <button class="modal-close" id="mClose"><i class="fa-solid fa-times"></i></button></div>
+    <div class="bulk-hint">Pilih bulan & tahun untuk rekap Kehadiran Perwalian, atau pilih Semua Bulan buat rekap gabungan seperti biasa.</div>
+    <div class="form-group"><label class="form-label">Bulan</label><select class="form-input" id="mpMonth">${monthOptions}</select></div>
+    <div class="form-group"><label class="form-label">Tahun</label><select class="form-input" id="mpYear">${yearOptions}</select></div>
+    <button class="btn-submit" id="mpConfirm"><i class="fa-solid fa-check"></i> Download Bulan Ini</button>
+    <button class="btn-sm" id="mpAll" style="width:100%;margin-top:8px;">Semua Bulan (gabungan seperti biasa)</button>
+  `);
+  modal.querySelector('#mClose').onclick = ()=>modal.remove();
+  modal.querySelector('#mpConfirm').onclick = ()=>{
+    const m = modal.querySelector('#mpMonth').value;
+    const y = modal.querySelector('#mpYear').value;
+    modal.remove();
+    onConfirm(`${y}-${m}`);
+  };
+  modal.querySelector('#mpAll').onclick = ()=>{
+    modal.remove();
+    onConfirm(null);
   };
 }
 
@@ -1373,12 +1414,15 @@ window.openSettings = function(){
 };
 
 /* ---------- Excel export: reusable sheet builders ---------- */
-function buildKehadiranSheet(cls){
+function buildKehadiranSheet(cls, monthFilter){
   if(!cls.students.length) return null;
   const rows = [['Siswa','No Absen', ...ATT_OPTS]];
   cls.students.forEach(s=>{
     const counts={}; ATT_OPTS.forEach(o=>counts[o]=0);
-    Object.values(cls.attendance).forEach(rec=>{ if(rec[s.id]) counts[rec[s.id]]++; });
+    Object.entries(cls.attendance).forEach(([date,rec])=>{
+      if(monthFilter && !date.startsWith(monthFilter)) return;
+      if(rec[s.id]) counts[rec[s.id]]++;
+    });
     rows.push([s.name, s.absen||'', ...ATT_OPTS.map(o=>counts[o])]);
   });
   return rows;
@@ -1460,7 +1504,10 @@ function exportGuruWaliSemua(){
 
 /* ---- Export per-bagian: Perwalian ---- */
 function exportPerwalianKehadiran(){
-  downloadSheets([{ name:'Kehadiran', rows: buildKehadiranSheet(state.homeroom) }], 'Perwalian_Kehadiran.xlsx');
+  openMonthPickerModal((monthFilter)=>{
+    const suffix = monthFilter ? monthFilter : 'SemuaBulan';
+    downloadSheets([{ name:'Kehadiran', rows: buildKehadiranSheet(state.homeroom, monthFilter) }], `Perwalian_Kehadiran_${suffix}.xlsx`);
+  });
 }
 function exportPerwalianPelanggaran(){
   downloadSheets([{ name:'Pelanggaran', rows: buildPelanggaranSheet(state.homeroom) }], 'Perwalian_Pelanggaran.xlsx');
@@ -1469,12 +1516,14 @@ function exportPerwalianBiodata(){
   downloadSheets([{ name:'Biodata', rows: buildBiodataSheet(state.homeroom.students, state.homeroom.biodata, HOMEROOM_BIODATA_FIELDS) }], 'Perwalian_Biodata.xlsx');
 }
 function exportPerwalianSemua(){
-  const sheets = [
-    { name:'Kehadiran', rows: buildKehadiranSheet(state.homeroom) },
-    { name:'Pelanggaran', rows: buildPelanggaranSheet(state.homeroom) },
-    { name:'Biodata', rows: buildBiodataSheet(state.homeroom.students, state.homeroom.biodata, HOMEROOM_BIODATA_FIELDS) }
-  ];
-  downloadSheets(sheets, 'Perwalian_Semua.xlsx');
+  openMonthPickerModal((monthFilter)=>{
+    const sheets = [
+      { name:'Kehadiran', rows: buildKehadiranSheet(state.homeroom, monthFilter) },
+      { name:'Pelanggaran', rows: buildPelanggaranSheet(state.homeroom) },
+      { name:'Biodata', rows: buildBiodataSheet(state.homeroom.students, state.homeroom.biodata, HOMEROOM_BIODATA_FIELDS) }
+    ];
+    downloadSheets(sheets, 'Perwalian_Semua.xlsx');
+  });
 }
 
 /* ---- Export per-bagian: kelas Matematika ---- */
@@ -1535,21 +1584,23 @@ function openMathExport(clsId){
 
 /* ---------- Excel export: semua data (dari Pengaturan) ---------- */
 function exportExcel(){
-  const sheets = [
-    { name:'Kehadiran Perwalian', rows: buildKehadiranSheet(state.homeroom) },
-    { name:'Pelanggaran', rows: buildPelanggaranSheet(state.homeroom) },
-    { name:'Biodata Perwalian', rows: buildBiodataSheet(state.homeroom.students, state.homeroom.biodata, HOMEROOM_BIODATA_FIELDS) },
-    { name:'Biodata Guru Wali', rows: buildBiodataSheet(state.guruWali.students, state.guruWali.biodata, BIODATA_FIELDS) },
-    ...buildRaportSheets(state.guruWali).map(sh=>({ name: 'GW ' + sh.name, rows: sh.rows }))
-  ];
-  state.mathClasses.forEach(c=>{
-    if(!c.students.length) return;
-    sheets.push({ name: (c.className+' Keh').slice(0,31), rows: buildKehadiranSheet(c) });
-    sheets.push({ name: (c.className+' Tugas').slice(0,31), rows: buildTugasUjianSheet(c,'tugasColumns','tugasValues') });
-    sheets.push({ name: (c.className+' Ujian').slice(0,31), rows: buildTugasUjianSheet(c,'ujianColumns','ujianValues') });
-    sheets.push({ name: (c.className+' Keaktifan').slice(0,31), rows: buildMajuSheet(c) });
+  openMonthPickerModal((monthFilter)=>{
+    const sheets = [
+      { name:'Kehadiran Perwalian', rows: buildKehadiranSheet(state.homeroom, monthFilter) },
+      { name:'Pelanggaran', rows: buildPelanggaranSheet(state.homeroom) },
+      { name:'Biodata Perwalian', rows: buildBiodataSheet(state.homeroom.students, state.homeroom.biodata, HOMEROOM_BIODATA_FIELDS) },
+      { name:'Biodata Guru Wali', rows: buildBiodataSheet(state.guruWali.students, state.guruWali.biodata, BIODATA_FIELDS) },
+      ...buildRaportSheets(state.guruWali).map(sh=>({ name: 'GW ' + sh.name, rows: sh.rows }))
+    ];
+    state.mathClasses.forEach(c=>{
+      if(!c.students.length) return;
+      sheets.push({ name: (c.className+' Keh').slice(0,31), rows: buildKehadiranSheet(c) });
+      sheets.push({ name: (c.className+' Tugas').slice(0,31), rows: buildTugasUjianSheet(c,'tugasColumns','tugasValues') });
+      sheets.push({ name: (c.className+' Ujian').slice(0,31), rows: buildTugasUjianSheet(c,'ujianColumns','ujianValues') });
+      sheets.push({ name: (c.className+' Keaktifan').slice(0,31), rows: buildMajuSheet(c) });
+    });
+    downloadSheets(sheets, 'Rekap_Dwi_Septiana.xlsx');
   });
-  downloadSheets(sheets, 'Rekap_Dwi_Septiana.xlsx');
 }
 
 /* ---------- Standalone student self-fill mode ----------
